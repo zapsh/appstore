@@ -1,0 +1,24 @@
+name: pie
+title: PIE (PHP Installer for Extensions)
+version: ["latest"]
+category: application
+description: >
+  PIE 是 PHP 官方（PHP Foundation）推出的 PHP 扩展安装器，可为指定 PHP 版本从
+  PECL / 源码编译并安装扩展。装好本工具后，面板「服务配置 → PHP → 扩展」对 PHP 8.1+
+  实例的安装流程会自动改用 `pie install`，不再依赖 pecl 或手工 phpize 编译。
+tags: [php, pie, extension, cli]
+scripts:
+  install: install.sh
+  uninstall: uninstall.sh
+options:
+  install:
+    - name: PIE_PHAR_MIRROR
+      label: PIE Phar 下载源
+      type: select
+      default: github
+      desc: 默认走官方 GitHub latest stable；若服务器访问 GitHub 慢，可选 zap.sh 中国镜像（需镜像源已托管 pie）。
+      choices:
+        - label: github.com (official, latest stable)
+          value: github
+        - label: zap.sh (China mirror)
+          value: zapsh
