@@ -1,0 +1,9 @@
+# 应用商店元数据（与插件运行时 manifest.yaml 分开）。
+# 这里只描述「市场卡片」与安装约束；插件真正怎么跑由同目录的 manifest.yaml 决定。
+name: hello-plugin
+title: 目录体检（示例插件）
+description: 演示如何通过应用商店分发系统级插件：装完后会在站点详情「插件」页出现入口，可扫描目录 / 统计占用。
+version: 1.0.0
+category: plugins
+# 系统级插件仅管理员可安装（缺省即如此；要开放普通用户可加 roles: [user]）。
+# 不声明 provision / run_as：插件不走建站编排、也不降权（走插件自身的 scope）。

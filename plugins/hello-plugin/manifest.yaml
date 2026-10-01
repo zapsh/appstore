@@ -1,0 +1,21 @@
+name: hello-plugin
+title: 目录体检
+version: 1.0.0
+description: 扫描站点目录、统计占用（应用商店分发的示例插件）
+author: zap
+
+# site = 以站点 Linux 账号运行（需要站点上下文）；system = 以 root 运行（仅系统级插件）
+scope: site
+
+# 自带界面：ui.html 指向插件目录下的 HTML 文件（只能是插件目录内的单个 .html）
+ui:
+  placement: site.detail
+  label: 目录体检
+  icon: material-symbols:monitor-heart
+  html: ui.html
+
+# 声明多个入口，HTML 里用 zap.call('<action>', {...}) 分别调用；
+# main.lua 里对应写 on_<action>（缺省回落到 on_run）
+actions:
+  scan: 扫描目录
+  du: 统计占用
