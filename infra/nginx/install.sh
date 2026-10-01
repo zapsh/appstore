@@ -51,7 +51,7 @@ case "$(echo "${MODSECURITY:-false}" | tr '[:upper:]' '[:lower:]')" in
     *) WAF_ENABLED=0 ;;
 esac
 
-INSTALL_PATH="${APPS_DIR}/nginx-${APP_VERSION}"
+INSTALL_PATH="${APPS_DIR}/nginx"
 NGINX_SRC="nginx-${APP_VERSION}"
 ZLIB_SRC="zlib-${ZLIB_VERSION}"
 PCRE2_SRC="pcre2-${PCRE2_VERSION}"
@@ -100,7 +100,9 @@ tar -xzf "${NGINX_SRC}.tar.gz" -C "${BUILD_PATH}"
 tar -xzf "${PCRE2_SRC}.tar.gz" -C "${BUILD_PATH}"
 tar -xzf "${OPENSSL_SRC}.tar.gz" -C "${BUILD_PATH}"
 
-# ── 清理旧的同版本安装残留 ───────────────────────────────────────────────
+# ── 清理旧的安装残留 ───────────────────────────────────────────────────
+# 新布局:直接装到 ${APPS_DIR}/nginx(无版本号)。兼容旧版「版本化目录 + 软链」
+# 残留,升级时一并清掉,避免 appstore 扫到重复的 nginx 记录。
 if [ -d "${INSTALL_PATH}" ]; then
     log_warn "检测到已存在 ${INSTALL_PATH},备份 conf 后重新安装"
     if [ -d "${INSTALL_PATH}/conf" ]; then
@@ -108,6 +110,11 @@ if [ -d "${INSTALL_PATH}" ]; then
         cp -Rf "${INSTALL_PATH}/conf" "/root/zap_bak/nginx/conf.$(date +%Y%m%d%H%M%S)" || true
     fi
     rm -rf "${INSTALL_PATH}"
+fi
+# 旧版遗留:nginx-<version> 真实目录(曾被 ${APPS_DIR}/nginx 软链指向过)
+if [ -e "${APPS_DIR}/nginx-${APP_VERSION}" ] && [ "${APPS_DIR}/nginx-${APP_VERSION}" != "${INSTALL_PATH}" ]; then
+    log_warn "清理旧版版本化目录 ${APPS_DIR}/nginx-${APP_VERSION}"
+    rm -rf "${APPS_DIR}/nginx-${APP_VERSION}"
 fi
 
 # ── ModSecurity 构建依赖(按发行版取包名) ──────────────────────────────────
@@ -453,20 +460,10 @@ EOF
     fi
 fi
 
-# ── 版本软链 ──────────────────────────────────────────────────────────────
-if [ -L "${APPS_DIR}/nginx" ]; then
-    rm -f "${APPS_DIR}/nginx"
-    ln -s "${INSTALL_PATH}" "${APPS_DIR}/nginx"
-    log_ok "更新软链 ${APPS_DIR}/nginx -> ${INSTALL_PATH}"
-elif [ -e "${APPS_DIR}/nginx" ] && [ ! -d "${APPS_DIR}/nginx" ]; then
-    rm -f "${APPS_DIR}/nginx"
-    ln -s "${INSTALL_PATH}" "${APPS_DIR}/nginx"
-elif [ ! -e "${APPS_DIR}/nginx" ]; then
-    ln -s "${INSTALL_PATH}" "${APPS_DIR}/nginx"
-    log_ok "创建软链 ${APPS_DIR}/nginx -> ${INSTALL_PATH}"
-else
-    log_warn "${APPS_DIR}/nginx 已存在真实目录,跳过软链(服务仍指向 ${INSTALL_PATH})"
-fi
+# ── 安装目录即 ${APPS_DIR}/nginx(无版本号,固定路径) ───────────────────
+# 不再创建 /usr/local/apps/nginx 软链:旧版用「版本化目录 + 软链」会导致 appstore
+# 把软链与真实目录扫成两条 nginx 记录。本版直接装到固定路径,仅此一条。
+log_ok "nginx 安装目录: ${INSTALL_PATH}"
 
 # ── 服务(修正模板中的硬编码路径,按实际安装目录生成) ────────────────────
 # 说明:若先配置过站点需额外测试 nginx -t;此处直接写精确路径。

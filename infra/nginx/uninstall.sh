@@ -3,7 +3,7 @@
 # 依赖环境变量（由 zapexec 注入）：APPS_DIR APP_VERSION
 set -euo pipefail
 
-INSTALL_PATH="${APPS_DIR}/nginx-${APP_VERSION}"
+INSTALL_PATH="${APPS_DIR}/nginx"
 
 echo "uninstall nginx ${APP_VERSION}"
 
@@ -18,9 +18,12 @@ if [ -d "${INSTALL_PATH}/conf" ]; then
     cp -Rf "${INSTALL_PATH}/conf" "${BAK_DIR}/nginx.conf.$(date +%Y%m%d%H%M%S)"
 fi
 
-# ── 移除软链 ───────────────────────────────────────────────
+# ── 移除软链 / 旧版版本化目录(新布局不再创建,这里兼容旧安装) ──
 if [ -L "${APPS_DIR}/nginx" ]; then
     rm -f "${APPS_DIR}/nginx"
+fi
+if [ -e "${APPS_DIR}/nginx-${APP_VERSION}" ]; then
+    rm -rf "${APPS_DIR}/nginx-${APP_VERSION}"
 fi
 
 # ── 删除安装目录（zap 侧随后清理 APP_PATH 元数据目录） ─────
