@@ -26,7 +26,6 @@ LOG_DIR="${ZAP_DATA_PATH}/logs"
 
 log_info "准备安装 ${APP_TITLE} "
 
-
 # ── 下载并解压 ──────────────────────────────────────────────
 ARCHIVE="phpMyAdmin-${APP_VERSION}-all-languages.tar.gz"
 URL="$(pkg_mirror)/webapps/${ARCHIVE}"

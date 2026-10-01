@@ -1,9 +1,11 @@
 name: phpmyadmin
 title: phpMyAdmin
 version: [5.2.3]
-category: webapps
-description: 通过浏览器管理 MySQL / MariaDB 的 PHP 应用，以独立端口提供访问
-tags: [phpmyadmin, mysql, mariadb, webapp]
+category: tools
+description: 通过浏览器管理 MySQL / MariaDB 的 PHP 工具，由面板在 /webapps/phpmyadmin/ 路径下托管并提供鉴权。属于面板级系统管理工具，不再建独立用户站点。
+tags: [phpmyadmin, mysql, mariadb, tool]
+# 面板级工具：系统级安装，不进用户站点目录
+scope: panel
 allow_multiple_instances: 'no'
 dependencies:
   php: '>=7.2'
@@ -15,7 +17,7 @@ options:
   install:
     intro: >-
       phpMyAdmin will be installed to /usr/local/apps/phpmyadmin-<version> (symlinked as
-      /usr/local/apps/phpmyadmin) and exposed through a dedicated Nginx server block.
+      /usr/local/apps/phpmyadmin) and exposed through the panel's /webapps/phpmyadmin/ path.
       The database credentials are NOT stored here: phpMyAdmin uses cookie auth, so you
       log in with your existing MySQL / MariaDB user and password in the browser.
     items:

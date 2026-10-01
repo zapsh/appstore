@@ -1,0 +1,43 @@
+name: skeleton
+title: Web 应用骨架
+version: [1.0.0]
+category: webapps
+description: 最小可运行的 webapps 应用骨架。演示面板自动建站 + 建库，以及一个完整的 PHP 前端表单 ↔ 后端处理（留言板）示例。复制本目录即可作为你自己站点应用的起点。
+tags: [skeleton, demo, php]
+# 站点类包：装进用户站点目录，脚本降权为该站点的 Linux 账号（nologin）
+scope: site
+run_as: user
+# 普通用户也可安装（缺省仅 admin 可见可安装）
+roles: [admin, user]
+# 同一域名只能装一个，换域名重装算另一个实例
+allow_multiple_instances: 'yes'
+# ── 面板侧编排 ──────────────────────────────────────────────
+# 降权脚本没有建站、建库的权限，也不该拿到数据库管理凭据。
+# 由面板在任务入队前准备好，再把连接信息注入脚本环境：
+#   SITE_ID SITE_DOMAIN SITE_ROOT SITE_OWNER SITE_LINUX_USER PHP_INSTANCE PHP_FPM_SOCK
+#   DB_NAME DB_USER DB_PASS DB_HOST DB_PORT DB_CHARSET DB_USER_HOST
+# 密码不进 options.env / info.yaml，只在脚本进程与 provision.json（0600）出现。
+provision:
+  site:
+    mode: create              # 站点不存在就按面板规则自动建；改 require 则要求先建站
+    domain_option: SITE_DOMAIN
+    # 普通 PHP 站点无需伪静态；thinkphp / laravel / wordpress 等换成对应预设即可
+    rewrite: none
+  database:
+    name: app                  # 实际库名 = 用户前缀 + app（重名自动 app_2…）
+    charset: utf8mb4
+scripts:
+  install: install.sh
+  uninstall: uninstall.sh
+options:
+  install:
+    intro: >-
+      面板会为 SITE_DOMAIN 自动建好 PHP 站点与专用数据库，并把连接信息注入脚本环境。
+      安装脚本以站点 Linux 账号身份把程序写入站点根目录（SITE_ROOT）。
+    items:
+      - name: SITE_DOMAIN
+        label: 站点域名
+        type: string
+        required: true
+        placeholder: app.example.com
+        desc: 站点不存在时面板会自动创建（PHP 取面板默认版本）
