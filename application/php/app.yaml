@@ -1,6 +1,6 @@
 name: php
 title: PHP
-version: [8.3.3,7.4.33]
+version: [8.5.10,8.4.25,8.3.33,7.4.33]
 category: application
 description: PHP is a server-side scripting language designed for web development.
 icon: php.png
