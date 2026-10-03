@@ -1,0 +1,30 @@
+name: git
+title: Git 管理
+version: 1.0.0
+description: 在文件管理器当前目录里管理 Git 仓库（状态 / 提交 / 推送 / 拉取 / 分支等）
+author: zap
+
+# user = 以「调用方面板用户」的 Linux 账号执行（不再是 root），避免 git 把仓库文件
+# 改成 root 所有、产生权限问题；工作目录由文件管理器通过 options.cwd 传入。
+scope: user
+
+# 自带界面：嵌在文件管理器编辑器顶部工具栏，点开后在指定目录里跑 git。
+ui:
+  placement: file.editor
+  label: Git
+  icon: material-symbols:deployed-code
+  html: ui.html
+
+# 声明若干入口，HTML 里用 zap.call('<action>', {...}) 分别调用；
+# main.lua 里统一由 on_run 按 ctx.action 分发（也支持显式 on_<action>）。
+actions:
+  status: 状态
+  log: 日志
+  diff: 差异
+  add: 暂存
+  commit: 提交
+  branch: 分支
+  pull: 拉取
+  push: 推送
+  fetch: 获取
+  init: 初始化

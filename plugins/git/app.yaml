@@ -1,0 +1,9 @@
+# 应用商店元数据（与插件运行时 manifest.yaml 分开）。
+# 这里只描述「市场卡片」与安装约束；插件真正怎么跑由同目录的 manifest.yaml 决定。
+name: git
+title: Git 管理
+description: 在文件管理器当前目录里管理 Git 仓库：状态、提交、推送、拉取、分支等。点开编辑器顶部工具栏的 Git 即可使用。
+version: 1.0.0
+category: plugins
+# 仅 admin 可安装（插件装在系统目录，但运行时以「调用方面板用户」身份执行；安装受后端权限二次把关）。
+roles: [admin]

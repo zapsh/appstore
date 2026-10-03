@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <!-- 面板会自动注入 window.zap（postMessage RPC 桥），这里不要重复定义 -->
+    <style>
+      :root { color-scheme: light; }
+      body { margin: 16px; font: 13px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #2c3e50; }
+      h3 { margin: 0 0 12px; font-size: 15px; }
+      .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+      label { color: #909399; flex-shrink: 0; }
+      input { flex: 1; min-width: 200px; padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px; font: inherit; }
+      input:focus { outline: none; border-color: #409eff; }
+      button { padding: 6px 14px; border: 1px solid #dcdfe6; border-radius: 4px; background: #409eff; color: #fff; font: inherit; cursor: pointer; }
+      button:disabled { opacity: .6; cursor: not-allowed; }
+      button.ghost { background: #fff; color: #606266; }
+      pre { margin: 0; padding: 12px; background: #f5f7fa; border-radius: 6px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-all; min-height: 60px; }
+      .tip { color: #909399; font-size: 12px; margin-top: 6px; }
+      .err { color: #f56c6c; }
+    </style>
+  </head>
+  <body>
+    <h3>Git 管理</h3>
+
+    <div class="row">
+      <label>目录</label>
+      <input id="dir" placeholder="工作目录（默认取文件管理器当前目录）" />
+      <button id="status">状态</button>
+    </div>
+
+    <div class="row">
+      <input id="msg" placeholder="提交信息（commit 用）" />
+      <button id="commit">提交</button>
+      <button id="add" class="ghost">暂存全部</button>
+    </div>
+
+    <div class="row">
+      <button id="log" class="ghost">日志</button>
+      <button id="diff" class="ghost">差异</button>
+      <button id="branch" class="ghost">分支</button>
+    </div>
+
+    <div class="row">
+      <button id="pull">拉取</button>
+      <button id="push">推送</button>
+      <button id="fetch" class="ghost">获取</button>
+      <button id="init" class="ghost">初始化</button>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #ebeef5;margin:14px 0;" />
+
+    <div class="row">
+      <input id="gitName" placeholder="user.name（如 Your Name）" />
+      <input id="gitEmail" placeholder="user.email（如 you@example.com）" />
+    </div>
+    <div class="row">
+      <label style="display:flex;align-items:center;gap:6px;color:#606266;">
+        <input type="checkbox" id="globalCfg" checked style="flex:none;width:auto;" /> 全局配置（--global）
+      </label>
+      <button id="saveCfg">保存身份</button>
+    </div>
+
+    <div class="row">
+      <input id="remoteName" placeholder="远程名（默认 origin）" />
+      <input id="remoteUrl" placeholder="远程仓库地址（https / ssh）" />
+      <button id="setRemote">设置远程</button>
+    </div>
+
+    <pre id="out">（点「状态」开始）</pre>
+    <div class="tip">工作目录默认取文件管理器当前目录，可手动修改。命令以「当前登录用户」身份在指定目录执行；需要凭据的远程操作请确保已配置 SSH/凭据。</div>
+
+    <script>
+      var out = document.getElementById('out')
+      var dir = document.getElementById('dir')
+      var msg = document.getElementById('msg')
+
+      function setBusy(b) {
+        var btns = document.querySelectorAll('button')
+        for (var i = 0; i < btns.length; i++) btns[i].disabled = b
+      }
+      function show(text, isErr) {
+        out.className = isErr ? 'err' : ''
+        out.textContent = text || '（无输出）'
+      }
+
+      // zap.call(action, options) -> Promise<插件输出文本>
+      function call(action, extra) {
+        setBusy(true)
+        show('执行中…')
+        var opts = Object.assign({ cwd: dir.value }, extra || {})
+        return zap
+          .call(action, opts)
+          .then(function (text) { show(text) })
+          .catch(function (e) { show((e && e.message ? e.message : e), true) })
+          .then(function () { setBusy(false) })
+      }
+
+      // 初始化：读取当前目录（文件管理器传入的 cwd）并回显
+      zap
+        .call('info', {})
+        .then(function (text) { if (text) dir.value = String(text).trim() })
+        .catch(function () {})
+
+      document.getElementById('status').onclick = function () { call('status') }
+      document.getElementById('add').onclick = function () { call('add', { files: '.' }) }
+      document.getElementById('commit').onclick = function () { call('commit', { message: msg.value || 'update' }) }
+      document.getElementById('log').onclick = function () { call('log') }
+      document.getElementById('diff').onclick = function () { call('diff') }
+      document.getElementById('branch').onclick = function () { call('branch') }
+      document.getElementById('pull').onclick = function () { call('pull') }
+      document.getElementById('push').onclick = function () { call('push') }
+      document.getElementById('fetch').onclick = function () { call('fetch') }
+      document.getElementById('init').onclick = function () { call('init') }
+
+      document.getElementById('saveCfg').onclick = function () {
+        call('config', {
+          name: document.getElementById('gitName').value.trim(),
+          email: document.getElementById('gitEmail').value.trim(),
+          global: document.getElementById('globalCfg').checked ? '1' : '0'
+        })
+      }
+      document.getElementById('setRemote').onclick = function () {
+        call('remote', {
+          remote: document.getElementById('remoteName').value.trim(),
+          url: document.getElementById('remoteUrl').value.trim()
+        })
+      }
+    </script>
+  </body>
+</html>
