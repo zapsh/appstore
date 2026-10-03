@@ -7,8 +7,8 @@ tags: [skeleton, demo, php]
 # 站点类包：装进用户站点目录，脚本降权为该站点的 Linux 账号（nologin）
 scope: site
 run_as: user
-# 普通用户也可安装（缺省仅 admin 可见可安装）
-roles: [admin, user]
+# 所有角色均可安装（缺省仅 admin 可见可安装；这里显式开放给 user / reseller / demo）
+roles: [admin, user, reseller, demo]
 # 同一域名只能装一个，换域名重装算另一个实例
 allow_multiple_instances: 'yes'
 # ── 面板侧编排 ──────────────────────────────────────────────
