@@ -1,0 +1,9 @@
+# 应用商店元数据（与插件运行时 manifest.yaml 分开）。
+# 这里只描述「市场卡片」与安装约束；插件真正怎么跑由同目录的 manifest.yaml 决定。
+name: widgets-demo
+title: 控件示例（示例插件）
+description: 演示插件 manifest 的 options 全部控件类型（文本/数字/开关/单选/多选/目录/文件），由前端自动渲染表单。
+version: 1.0.0
+category: plugins
+# 所有角色均可安装
+roles: [admin]

@@ -7,70 +7,93 @@
       :root { color-scheme: light; }
       body { margin: 16px; font: 13px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #2c3e50; }
       h3 { margin: 0 0 12px; font-size: 15px; }
-      .row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-      input { flex: 1; padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px; font: inherit; }
-      input:focus { outline: none; border-color: #409eff; }
+      .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
       button { padding: 6px 16px; border: 1px solid #dcdfe6; border-radius: 4px; background: #409eff; color: #fff; font: inherit; cursor: pointer; }
       button:disabled { opacity: .6; cursor: not-allowed; }
       button.ghost { background: #fff; color: #606266; }
+      .field { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+      .field label { width: 72px; color: #606266; flex: none; }
+      .field code { flex: 1; padding: 6px 10px; background: #f5f7fa; border-radius: 4px; word-break: break-all; min-height: 16px; }
       pre { margin: 0; padding: 12px; background: #f5f7fa; border-radius: 6px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-all; min-height: 60px; }
       .tip { color: #909399; font-size: 12px; margin-top: 6px; }
       .err { color: #f56c6c; }
     </style>
   </head>
   <body>
-    <h3>目录体检</h3>
+    <h3>目录体检（pick 演示）</h3>
+
+    <div class="field">
+      <label>目标目录</label>
+      <code id="dir">（未选择）</code>
+      <button id="pickDir">选择目录</button>
+    </div>
+    <div class="field">
+      <label>源文件</label>
+      <code id="file">（未选择）</code>
+      <button id="pickFile" class="ghost">选择文件</button>
+    </div>
 
     <div class="row">
-      <input id="target" placeholder="相对站点根目录，留空 = 根目录" value="" />
-      <button id="scan">扫描</button>
+      <button id="scan">扫描目录</button>
       <button id="du" class="ghost">统计占用</button>
     </div>
-    <div class="tip">输入由插件自己校验，越界路径会被 <code>zap.path.site()</code> 挡掉。</div>
+    <div class="tip">目录/文件通过 <code>zap.pickDir()</code> / <code>zap.pickFile()</code> 调起面板原生选择器（与 manifest options 的 type:dir / type:file 同一套组件）。</div>
 
     <pre id="out">（点上面的按钮）</pre>
 
     <script>
       var out = document.getElementById('out')
-      var target = document.getElementById('target')
+      var dirEl = document.getElementById('dir')
+      var fileEl = document.getElementById('file')
+      var pickDirBtn = document.getElementById('pickDir')
+      var pickFileBtn = document.getElementById('pickFile')
       var scanBtn = document.getElementById('scan')
       var duBtn = document.getElementById('du')
 
+      var TARGET = ''
+      var SRC = ''
+
       function busy(v) {
-        scanBtn.disabled = v
-        duBtn.disabled = v
+        scanBtn.disabled = v; duBtn.disabled = v
+        pickDirBtn.disabled = v; pickFileBtn.disabled = v
       }
 
-      // zap.call(action, options) -> Promise<插件输出文本>
-      // 第三个参数传回调则开启流式日志（异步插件逐行回推）
+      // 调起面板原生目录选择器；选中站点根本身时返回空串（与 options type:dir 的
+      // 「留空 = 站点根」约定一致），界面要如实显示成「站点根」而不是「未选择」。
+      pickDirBtn.onclick = function () {
+        zap.pickDir({ title: '选择目标目录' })
+          .then(function (p) {
+            TARGET = p || ''
+            dirEl.textContent = TARGET === '' ? '（站点根）' : TARGET
+          })
+          .catch(function (e) { dirEl.textContent = '失败: ' + (e && e.message ? e.message : e) })
+      }
+
+      // 调起面板原生文件选择器，返回绝对路径
+      pickFileBtn.onclick = function () {
+        zap.pickFile({ title: '选择源文件' })
+          .then(function (p) { SRC = p || ''; fileEl.textContent = SRC || '（未选择）' })
+          .catch(function (e) { fileEl.textContent = '失败: ' + (e && e.message ? e.message : e) })
+      }
+
       function call(action, onLine) {
         busy(true)
         out.className = ''
         if (!onLine) out.textContent = '执行中…'
         return zap
-          .call(action, { TARGET: target.value || '' }, onLine)
-          .then(function (text) {
-            out.textContent = text || '（无输出）'
-          })
+          .call(action, { TARGET: TARGET, SRC: SRC }, onLine)
+          .then(function (text) { out.textContent = text || '（无输出）' })
           .catch(function (e) {
             out.className = 'err'
             out.textContent = '失败: ' + (e && e.message ? e.message : e)
           })
-          .then(function () {
-            busy(false)
-          })
+          .then(function () { busy(false) })
       }
 
-      scanBtn.onclick = function () {
-        call('scan')
-      }
-
-      // 流式示例：异步插件的日志逐行追加
+      scanBtn.onclick = function () { call('scan') }
       duBtn.onclick = function () {
         out.textContent = ''
-        call('du', function (line) {
-          out.textContent += line + '\n'
-        })
+        call('du', function (line) { out.textContent += line + '\n' })
       }
     </script>
   </body>

@@ -7,4 +7,4 @@ version: 1.0.0
 category: plugins
 # 所有角色均可安装（缺省仅 admin 可见可安装；这里显式开放给 user / reseller / demo）。
 # 不声明 provision / run_as：插件不走建站编排、也不降权（走插件自身的 scope）。
-roles: [admin, user, reseller, demo]
+roles: [admin]

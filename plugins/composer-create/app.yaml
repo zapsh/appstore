@@ -1,0 +1,11 @@
+# 应用商店元数据（与插件运行时 manifest.yaml 分开）。
+# 这里只描述「市场卡片」与安装约束；插件真正怎么跑由同目录的 manifest.yaml 决定。
+name: composer-create
+title: 创建 Composer 项目
+description: 在指定站点目录一键执行 composer create-project，快速拉起 Laravel / Symfony 等 PHP 框架项目。依赖 Composer 与 PHP，安装时会自动校验并尽量补装 Composer。
+version: 1.0.0
+category: plugins
+# 运行时依赖：composer（由 application/composer 提供），安装钩子会检测并尽量自动补装。
+deps: [composer]
+# 仅 admin 可安装（插件装在系统目录，但运行时以「站点 Linux 账号」身份执行；安装受后端权限二次把关）。
+roles: [admin]

@@ -1,13 +1,17 @@
 -- HTML 界面演示插件（应用商店分发版）。
 --
 -- 界面在 ui.html 里，用户点按钮后由父页面代跑 /plugin/run：
---   zap.call('scan', {TARGET='public'})  ->  这里进 on_scan
---   zap.call('du',   {TARGET='public'})  ->  这里进 on_du
+--   zap.call('scan', {TARGET, SRC})  ->  这里进 on_scan
+--   zap.call('du',   {TARGET, SRC})  ->  这里进 on_du
+-- 其中 TARGET / SRC 由 ui.html 通过 zap.pickDir() / zap.pickFile() 原生选择器取得。
 -- 返回值（zap.log 的内容）会原样回给界面。
 
 --- 扫描目录：列出一级子项，标出类型与大小。
 function on_scan(ctx)
   local target = zap.opt('TARGET', '')
+  local src = zap.opt('SRC', '')
+  zap.log('TARGET = ' .. (target ~= '' and target or '（站点根）'))
+  zap.log('SRC    = ' .. (src ~= '' and src or '（未选择）'))
   local dir = zap.path.site(target)
   if not zap.fs.is_dir(dir) then
     zap.log('不是目录: ' .. dir)
