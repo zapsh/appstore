@@ -1,7 +1,7 @@
 name: git
 title: Git 管理
-version: 1.1.0
-description: 在文件管理器当前目录里管理 Git 仓库（状态 / 暂存 / 提交 / 推送 / 身份与远程设置）
+version: 1.2.0
+description: 在文件管理器当前目录里管理 Git 仓库（状态 / 暂存 / 提交 / 推送 / 身份、远程与 SSH 密钥设置）
 author: zap
 
 # user = 以「调用方面板用户」的 Linux 账号执行（不再是 root），避免 git 把仓库文件
@@ -40,3 +40,7 @@ actions:
   config_get: 读取身份
   remote: 设置远程
   remote_remove: 删除远程
+  ssh_keys: SSH 密钥清单
+  ssh_use: 设置 Git 使用的 SSH 密钥
+  ssh_clear: 清除 core.sshCommand
+  ssh_test: 测试 SSH 连接

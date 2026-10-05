@@ -476,6 +476,218 @@ local function action_remote_remove(cwd)
   zap.log('已删除远程「' .. remote .. '」')
 end
 
+-- ── SSH 密钥 ────────────────────────────────────────────────
+--
+-- 面板「个人中心 → 我的 SSH 密钥」管理的密钥就落在执行身份家目录的 ~/.ssh 下
+-- （私钥 ~/.ssh/zap_<name>，公钥 ~/.ssh/zap_<name>.pub）。插件同样以该面板用户的
+-- linux 账号运行，所以直接读家目录即可，和「我的 SSH 密钥」看到的是同一批文件。
+--
+-- 选定密钥后写 `git config --global core.sshCommand "ssh -i <key> -o IdentitiesOnly=yes"`，
+-- 让 git 的 ssh 远程固定用这把钥匙（不再让 ssh-agent 挨个试）。
+
+--- 不在候选私钥里的固定文件名。
+local SSH_SKIP = {
+  ['known_hosts'] = true,
+  ['known_hosts.old'] = true,
+  config = true,
+  environment = true,
+  authorized_keys = true,
+  ['authorized_keys2'] = true,
+}
+
+local function ssh_home()
+  local home = trim(zap.home_dir())
+  if home == '' then zap.fail('取不到家目录，无法读取 SSH 密钥') end
+  return home
+end
+
+--- 从 `ssh-keygen -l -f <pub>` 的输出里拆出指纹与密钥类型。
+local function key_fingerprint(pub_path)
+  local ok, out = zap.try_run('ssh-keygen', { '-l', '-f', pub_path })
+  if not ok then return '', '' end
+  out = trim(out)
+  local _, fp = out:match('^(%d+)%s+(%S+)')
+  local ktype = out:match('%(([%w%-]+)%)')
+  return fp or '', ktype or ''
+end
+
+--- 内容是否像一把 OpenSSH 私钥（挡掉同名的占位文件 / 随机文本）。
+local function looks_private(path)
+  local ok, content = pcall(zap.read_file, path)
+  if not ok or type(content) ~= 'string' then return false end
+  return content:find('PRIVATE KEY', 1, true) ~= nil
+end
+
+--- 公钥行第三列是注释（通常是邮箱）。
+local function pub_comment(pub_path)
+  local ok, content = pcall(zap.read_file, pub_path)
+  if not ok then return '' end
+  local parts = zap.str.split(trim(content), ' ')
+  return parts[3] or ''
+end
+
+--- 列出 ~/.ssh 下可用的私钥：面板托管的 `zap_*` 与常规 `id_*`，顺带取指纹 / 类型 / 注释。
+local function collect_keys(home)
+  local ssh_dir = zap.path.join(home, '.ssh')
+  local keys = {}
+  if zap.fs.is_dir(ssh_dir) then
+    for _, entry in ipairs(zap.fs.list(ssh_dir)) do
+      local keep = entry:sub(1, 1) ~= '.'
+        and not entry:find('%.pub$')
+        and not SSH_SKIP[entry]
+        and (entry:find('^zap_') or entry:find('^id_'))
+      if keep then
+        local full = zap.path.join(ssh_dir, entry)
+        if zap.fs.is_file(full) and looks_private(full) then
+          local pub = full .. '.pub'
+          local has_pub = zap.fs.is_file(pub)
+          local fp, ktype = '', ''
+          if has_pub then fp, ktype = key_fingerprint(pub) end
+          keys[#keys + 1] = {
+            name = entry,
+            path = full,
+            has_pub = has_pub,
+            fingerprint = fp,
+            key_type = ktype,
+            comment = has_pub and pub_comment(pub) or '',
+          }
+        end
+      end
+    end
+  end
+  table.sort(keys, function(a, b) return a.name < b.name end)
+  return keys
+end
+
+--- 当前生效的 core.sshCommand（全局优先，其次仓库级）。
+local function ssh_command(cwd)
+  local _, g = git_out({ 'config', '--global', '--get', 'core.sshCommand' }, cwd)
+  local _, l = git_out({ 'config', '--get', 'core.sshCommand' }, cwd)
+  return g, l
+end
+
+--- 把用户选的 key（名字或路径）解析成 ~/.ssh 下的绝对路径；越界 / 不存在都报错。
+local function resolve_key(home, key)
+  key = trim(key)
+  if key == '' then zap.fail('请选择要使用的 SSH 密钥') end
+  local ssh_dir = zap.path.join(home, '.ssh')
+  local full = key
+  if not zap.path.is_abs(full) then full = zap.path.join(ssh_dir, key) end
+  full = zap.path.normalize(full)
+  if not zap.path.within(ssh_dir, full) then zap.fail('密钥必须位于 ' .. ssh_dir .. ' 之下') end
+  if not zap.fs.is_file(full) then zap.fail('密钥文件不存在: ' .. full) end
+  return full
+end
+
+--- ssh_keys：密钥清单 + 当前 core.sshCommand（含从命令里解出来的 -i 路径）。
+local function action_ssh_keys(cwd)
+  local home = ssh_home()
+  local g, l = ssh_command(cwd)
+  local active = g ~= '' and g or l
+  zap.log(zap.json_encode({
+    ok = true,
+    home = home,
+    ssh_dir = zap.path.join(home, '.ssh'),
+    keys = collect_keys(home),
+    command_global = g,
+    command_local = l,
+    active_key = active:match('%-i%s+(%S+)') or '',
+  }))
+end
+
+--- ssh_use：写 core.sshCommand，让 git 固定用这把钥匙。
+local function action_ssh_use(cwd)
+  local home = ssh_home()
+  local key = resolve_key(home, zap.opt('key', ''))
+  local global = opt_bool('global', true)
+  local cmd = 'ssh -i ' .. key .. ' -o IdentitiesOnly=yes'
+  local args = { 'config' }
+  if global then args[#args + 1] = '--global' end
+  args[#args + 1] = 'core.sshCommand'
+  args[#args + 1] = cmd
+  git_or_fail(args, cwd, '设置 core.sshCommand')
+  zap.log('已写入 ' .. (global and '全局（~/.gitconfig）' or '当前仓库（.git/config）') .. '：core.sshCommand = ' .. cmd)
+end
+
+--- ssh_clear：删掉 core.sshCommand，回到 ssh 默认密钥 / agent。
+local function action_ssh_clear(cwd)
+  local global = opt_bool('global', true)
+  local args = { 'config' }
+  if global then args[#args + 1] = '--global' end
+  args[#args + 1] = '--unset'
+  args[#args + 1] = 'core.sshCommand'
+  -- 本来就没配置时 git 会返回非零，这里不算失败
+  local _, out = git(args, cwd)
+  zap.log('已清除 ' .. (global and '全局' or '当前仓库') .. ' core.sshCommand，git 将改用 ssh 默认密钥'
+    .. (trim(out) ~= '' and ('（' .. trim(out) .. '）') or ''))
+end
+
+--- 从 origin 的远程地址里推 user@host（ssh:// 与 scp 两种写法）；https 远程推不出来。
+local function derive_ssh_host(cwd)
+  local _, url = git_out({ 'remote', 'get-url', 'origin' }, cwd)
+  if url == '' then
+    local _, names = git_out({ 'remote' }, cwd)
+    local first = zap.str.lines(names)[1]
+    if first then _, url = git_out({ 'remote', 'get-url', first }, cwd) end
+  end
+  if url == '' or url:find('^https?://') then return '' end
+  local from_ssh = url:match('^ssh://([^/%s]+)')
+  if from_ssh then return (from_ssh:gsub(':%d+$', '')) end
+  return url:match('^([^:/%s]+@[^:/%s]+):') or ''
+end
+
+--- ssh_test：`ssh -T user@host` 探活。不带 key 时用 core.sshCommand 里配的那把
+--- （core.sshCommand 只对 git 生效，直接跑 ssh 得自己把 -i 带上）。
+local function action_ssh_test(cwd)
+  local home = ssh_home()
+  local host = trim(zap.opt('host', ''))
+  if host == '' then host = derive_ssh_host(cwd) end
+  if host == '' then zap.fail('请填写测试地址（如 git@github.com），或在仓库里配置 ssh 形式的 origin') end
+  if not host:match('^[%w%.%-%_]+@[%w%.%-%_]+$') then
+    zap.fail('测试地址应为 user@host 形式（如 git@github.com）：' .. host)
+  end
+
+  local key = trim(zap.opt('key', ''))
+  if key == '' then
+    local g, l = ssh_command(cwd)
+    local active = g ~= '' and g or l
+    key = active:match('%-i%s+(%S+)') or ''
+    if key ~= '' and not zap.path.is_abs(key) then key = '' end
+  end
+
+  -- 用 timeout 兜底：网络不通 / 等认证时不能把同步任务挂死
+  local args = {
+    '20', 'ssh', '-T',
+    '-o', 'BatchMode=yes',
+    '-o', 'IdentitiesOnly=yes',
+    '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', 'ConnectTimeout=10',
+  }
+  if key ~= '' then
+    key = resolve_key(home, key)
+    args[#args + 1] = '-i'
+    args[#args + 1] = key
+  end
+  args[#args + 1] = '--'
+  args[#args + 1] = host
+
+  local ok, out = zap.try_run('timeout', args)
+  out = trim(out)
+  -- GitHub 之类「认证成功但不给 shell」会返回退出码 1，所以不能只看 exit code
+  local authed = out:find('successfully authenticated', 1, true) ~= nil
+    or out:find('Hi ', 1, true) ~= nil
+    or out:find('Welcome', 1, true) ~= nil
+  if out == '' then out = ok and '（已连接，服务端未返回欢迎语）' or '连接超时或失败（20s 内没拿到响应）' end
+  zap.log(zap.json_encode({
+    ok = ok or authed,
+    authed = authed,
+    key = key,
+    host = host,
+    command = 'ssh -T' .. (key ~= '' and (' -i ' .. key) or '') .. ' ' .. host,
+    output = out,
+  }))
+end
+
 --- 默认入口：按 ctx.action 分发。
 function on_run(ctx)
   local action = ctx.action or 'status'
@@ -524,6 +736,14 @@ function on_run(ctx)
     return action_remote(cwd)
   elseif action == 'remote_remove' then
     return action_remote_remove(cwd)
+  elseif action == 'ssh_keys' then
+    return action_ssh_keys(cwd)
+  elseif action == 'ssh_use' then
+    return action_ssh_use(cwd)
+  elseif action == 'ssh_clear' then
+    return action_ssh_clear(cwd)
+  elseif action == 'ssh_test' then
+    return action_ssh_test(cwd)
   elseif action == 'clone' then
     local url = trim(zap.opt('url', ''))
     if url == '' then zap.fail('clone 需要 url') end

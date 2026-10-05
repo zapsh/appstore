@@ -235,6 +235,32 @@
       <hr class="hr" />
 
       <div class="section">
+        <div class="section-title">SSH 密钥（git 走 ssh 远程时用哪把钥匙）</div>
+        <div class="row">
+          <label>core.sshCommand</label>
+          <input type="text" id="sshCmd" class="grow" readonly />
+          <button id="clearSsh" class="danger">清除</button>
+        </div>
+        <div class="row">
+          <select id="sshKeySelect" class="grow"><option value="">（读取中…）</option></select>
+          <button id="useSshKey">设为 Git 使用的密钥</button>
+          <button id="refreshSsh" class="ghost">刷新</button>
+          <label style="display:flex;align-items:center;gap:4px;color:#606266;">
+            <input type="checkbox" id="sshGlobal" checked /> 写入全局（--global）
+          </label>
+        </div>
+        <div class="row">
+          <label>测试地址</label>
+          <input type="text" id="sshHost" class="grow" placeholder="留空则从 origin 推导，如 git@github.com" />
+          <button id="testSsh" class="ghost">测试连接</button>
+        </div>
+        <pre class="output" id="sshOut">（选好密钥点「设为 Git 使用的密钥」，即写入 core.sshCommand）</pre>
+        <div class="hint" id="sshHint"></div>
+      </div>
+
+      <hr class="hr" />
+
+      <div class="section">
         <div class="section-title">分支</div>
         <div class="row">
           <select id="branchSelect" class="grow"><option value="">（当前仓库无分支）</option></select>
@@ -492,7 +518,70 @@
 
       /** 刷新仓库状态：UI 打开时自动跑一次，之后每次写操作后再跑。 */
       function loadRepo() {
-        return callJson('repo').then(applyRepo).catch(function () {})
+        return callJson('repo').then(applyRepo).then(loadSsh).catch(function () {})
+      }
+
+      // ── SSH 密钥 ────────────────────────────────────────────────────────
+      /** 密钥清单读的是执行身份家目录下的 ~/.ssh，与个人中心「我的 SSH 密钥」同源。 */
+      function loadSsh() {
+        return callJson('ssh_keys').then(function (r) {
+          var sel = el('sshKeySelect')
+          var keep = sel.value
+          var list = arr(r.keys)
+          sel.innerHTML = ''
+          if (!list.length) {
+            sel.innerHTML = '<option value="">（~/.ssh 下没有可用私钥）</option>'
+          } else {
+            for (var i = 0; i < list.length; i++) {
+              var k = list[i]
+              var op = document.createElement('option')
+              op.value = k.path
+              op.textContent = k.name + (k.key_type ? '  [' + k.key_type + ']' : '')
+                + (k.fingerprint ? '  ' + k.fingerprint.slice(0, 24) : '')
+              sel.appendChild(op)
+            }
+            if (keep) sel.value = keep
+            if (!sel.value && r.active_key) sel.value = r.active_key
+          }
+          el('sshCmd').value = (r.command_global || r.command_local)
+            ? (r.command_global || r.command_local)
+            : '（未设置，走 ssh 默认密钥 / agent）'
+          var bits = ['密钥目录：' + (r.ssh_dir || '~/.ssh')]
+          if (!r.active_key && (r.command_global || r.command_local)) bits.push('当前命令里没解析出 -i 路径')
+          if (!list.length) bits.push('可到「个人中心 → 我的 SSH 密钥」生成 / 导入')
+          el('sshHint').textContent = bits.join('；')
+        }).catch(function () {})
+      }
+
+      function sshOut(text, isErr) {
+        el('sshOut').className = 'output' + (isErr ? ' err' : '')
+        el('sshOut').textContent = text || '（无输出）'
+      }
+
+      el('useSshKey').onclick = function () {
+        var key = el('sshKeySelect').value
+        if (!key) return setStatus('请先选择要使用的 SSH 密钥', true)
+        call('ssh_use', { key: key, global: el('sshGlobal').checked ? '1' : '0' })
+          .then(function (text) { sshOut(text); return loadSsh() })
+          .catch(function () {})
+      }
+      el('clearSsh').onclick = function () {
+        if (!confirm('清除 core.sshCommand？此后 git 改用 ssh 默认密钥 / agent。')) return
+        call('ssh_clear', { global: el('sshGlobal').checked ? '1' : '0' })
+          .then(function (text) { sshOut(text); return loadSsh() })
+          .catch(function () {})
+      }
+      el('refreshSsh').onclick = function () { loadSsh() }
+      el('testSsh').onclick = function () {
+        var host = el('sshHost').value.trim()
+        setStatus('正在测试 SSH 连接…')
+        callJson('ssh_test', { host: host, key: el('sshKeySelect').value })
+          .then(function (r) {
+            var head = '$ ' + (r.command || 'ssh -T') + '\n'
+            sshOut(head + (r.output || ''), !(r.ok || r.authed))
+            setStatus(r.authed || r.ok ? '认证成功' : '未通过认证，见输出', !(r.authed || r.ok))
+          })
+          .catch(function () {})
       }
 
       // ── 日志 ────────────────────────────────────────────────────────────
