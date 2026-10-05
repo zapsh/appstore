@@ -1,7 +1,7 @@
 name: git
 title: Git 管理
-version: 1.0.0
-description: 在文件管理器当前目录里管理 Git 仓库（状态 / 提交 / 推送 / 拉取 / 分支等）
+version: 1.1.0
+description: 在文件管理器当前目录里管理 Git 仓库（状态 / 暂存 / 提交 / 推送 / 身份与远程设置）
 author: zap
 
 # user = 以「调用方面板用户」的 Linux 账号执行（不再是 root），避免 git 把仓库文件
@@ -17,14 +17,26 @@ ui:
 
 # 声明若干入口，HTML 里用 zap.call('<action>', {...}) 分别调用；
 # main.lua 里统一由 on_run 按 ctx.action 分发（也支持显式 on_<action>）。
+#
+# 协议：repo / log / branch / config_get 返回**单行 JSON**（前端 JSON.parse 后渲染页签），
+# 其余返回可直读的文本；写操作（add / commit / push …）返回一行摘要，前端据此刷新 repo。
 actions:
   status: 状态
+  repo: 仓库快照
   log: 日志
   diff: 差异
   add: 暂存
+  unstage: 取消暂存
+  restore: 放弃修改
   commit: 提交
-  branch: 分支
+  branch: 分支列表
+  checkout: 切换分支
+  branch_create: 新建分支
   pull: 拉取
   push: 推送
   fetch: 获取
   init: 初始化
+  config: 保存身份
+  config_get: 读取身份
+  remote: 设置远程
+  remote_remove: 删除远程

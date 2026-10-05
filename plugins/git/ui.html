@@ -5,126 +5,643 @@
     <!-- 面板会自动注入 window.zap（postMessage RPC 桥），这里不要重复定义 -->
     <style>
       :root { color-scheme: light; }
-      body { margin: 16px; font: 13px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #2c3e50; }
-      h3 { margin: 0 0 12px; font-size: 15px; }
-      .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-      label { color: #909399; flex-shrink: 0; }
-      input { flex: 1; min-width: 200px; padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px; font: inherit; }
-      input:focus { outline: none; border-color: #409eff; }
-      button { padding: 6px 14px; border: 1px solid #dcdfe6; border-radius: 4px; background: #409eff; color: #fff; font: inherit; cursor: pointer; }
-      button:disabled { opacity: .6; cursor: not-allowed; }
+      body { margin: 0; font: 13px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #2c3e50; }
+      * { box-sizing: border-box; }
+      button { padding: 5px 12px; border: 1px solid #dcdfe6; border-radius: 4px; background: #409eff; color: #fff; font: inherit; cursor: pointer; }
+      button:disabled { opacity: .55; cursor: not-allowed; }
       button.ghost { background: #fff; color: #606266; }
-      pre { margin: 0; padding: 12px; background: #f5f7fa; border-radius: 6px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-all; min-height: 60px; }
-      .tip { color: #909399; font-size: 12px; margin-top: 6px; }
-      .err { color: #f56c6c; }
+      button.danger { background: #fff; color: #f56c6c; border-color: #fbc4c4; }
+      button.link { padding: 0; border: none; background: none; color: #409eff; }
+      input[type=text], textarea, select { padding: 5px 8px; border: 1px solid #dcdfe6; border-radius: 4px; font: inherit; color: inherit; background: #fff; }
+      input:focus, textarea:focus, select:focus { outline: none; border-color: #409eff; }
+      textarea { width: 100%; resize: vertical; }
+      label { color: #909399; }
+      .spacer { flex: 1; }
+
+      /* ── 页签 ─────────────────────────────────────────── */
+      .tabs { display: flex; gap: 2px; border-bottom: 1px solid #ebeef5; padding: 0 4px; }
+      .tabs button { border: 1px solid transparent; border-bottom: none; background: transparent; color: #606266; border-radius: 4px 4px 0 0; padding: 7px 16px; }
+      .tabs button:hover { color: #409eff; }
+      .tabs button.is-active { color: #409eff; background: #fff; border-color: #ebeef5; font-weight: 600; }
+      .panel { display: none; padding: 12px 4px 4px; }
+      .panel.is-active { display: block; }
+      .panel-scroll { max-height: 46vh; overflow: auto; }
+
+      /* ── 通用块 ───────────────────────────────────────── */
+      .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+      .row > label { flex-shrink: 0; }
+      .grow { flex: 1; min-width: 160px; }
+      .section { margin-bottom: 14px; }
+      .section-title { font-size: 12px; font-weight: 600; color: #909399; margin: 0 0 6px; }
+      .hr { border: none; border-top: 1px solid #ebeef5; margin: 14px 0; }
+      .hint { color: #909399; font-size: 12px; }
+      .warn { color: #e6a23c; font-size: 12px; }
+      .badge { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 11px; line-height: 18px; background: #ecf5ff; color: #409eff; }
+      .badge.warn { background: #fdf6ec; color: #e6a23c; }
+      .badge.danger { background: #fef0f0; color: #f56c6c; }
+      .badge.ok { background: #f0f9eb; color: #67c23a; }
+
+      /* ── 概览卡 ───────────────────────────────────────── */
+      .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 10px 12px; background: #f5f7fa; border-radius: 6px; }
+      .summary-item { min-width: 0; }
+      .summary-key { font-size: 12px; color: #909399; }
+      .summary-val { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      /* ── 变更列表 ─────────────────────────────────────── */
+      .file-list { border: 1px solid #ebeef5; border-radius: 6px; overflow: hidden; }
+      .file-group-title { display: flex; justify-content: space-between; padding: 6px 10px; background: #fafafa; font-size: 12px; color: #606266; border-bottom: 1px solid #ebeef5; }
+      .file-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-bottom: 1px solid #f5f7fa; }
+      .file-item:last-child { border-bottom: none; }
+      .file-item:hover { background: #f5f7fa; }
+      .file-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+      .empty { padding: 14px; text-align: center; color: #c0c4cc; font-size: 12px; }
+
+      /* ── 提交历史 / diff ──────────────────────────────── */
+      .commit { display: flex; gap: 8px; align-items: baseline; padding: 6px 8px; border-bottom: 1px solid #f5f7fa; cursor: pointer; }
+      .commit:hover { background: #f5f7fa; }
+      .commit-sha { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: #909399; flex-shrink: 0; }
+      .commit-subject { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .commit-meta { flex-shrink: 0; color: #909399; font-size: 12px; }
+
+      pre.output { margin: 0; padding: 12px; background: #f5f7fa; border-radius: 6px; max-height: 34vh; overflow: auto; white-space: pre-wrap; word-break: break-word; min-height: 48px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+      pre.output.err { color: #f56c6c; }
+
+      /* ── 底部状态条 ───────────────────────────────────── */
+      .statusbar { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #ebeef5; font-size: 12px; color: #606266; min-height: 24px; }
+      .statusbar .spacer { flex: 1; }
+      .statusbar.is-busy { color: #409eff; }
+      .statusbar.is-err { color: #f56c6c; }
+      table.remotes { width: 100%; border-collapse: collapse; }
+      table.remotes th, table.remotes td { padding: 5px 8px; text-align: left; border-bottom: 1px solid #f5f7fa; font-weight: normal; }
+      table.remotes th { color: #909399; font-size: 12px; }
+      table.remotes td.url { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
     </style>
   </head>
   <body>
-    <h3>Git 管理</h3>
-
-    <div class="row">
+    <!-- 工作目录：默认取文件管理器当前目录，可手动改后「应用」 -->
+    <div class="row" style="margin-bottom: 8px;">
       <label>目录</label>
-      <input id="dir" placeholder="工作目录（默认取文件管理器当前目录）" />
-      <button id="status">状态</button>
+      <input type="text" id="dir" class="grow" placeholder="工作目录（默认文件管理器当前目录）" />
+      <button id="applyDir" class="ghost">应用</button>
+      <button id="reload" class="ghost">刷新</button>
     </div>
 
-    <div class="row">
-      <input id="msg" placeholder="提交信息（commit 用）" />
-      <button id="commit">提交</button>
-      <button id="add" class="ghost">暂存全部</button>
+    <div class="tabs">
+      <button data-tab="status" class="is-active">状态</button>
+      <button data-tab="commit">提交 / 推送</button>
+      <button data-tab="settings">设置</button>
+      <button data-tab="log">日志</button>
     </div>
 
-    <div class="row">
-      <button id="log" class="ghost">日志</button>
-      <button id="diff" class="ghost">差异</button>
-      <button id="branch" class="ghost">分支</button>
+    <!-- ── 状态 ─────────────────────────────────────────── -->
+    <div class="panel is-active" data-panel="status">
+      <div id="notRepo" style="display: none;">
+        <div class="warn" id="notRepoMsg">该目录不是 Git 仓库。</div>
+        <div class="row" style="margin-top: 8px;">
+          <input type="text" id="initBranch" placeholder="初始分支名（可留空用 git 默认）" />
+          <button id="doInit">初始化仓库</button>
+        </div>
+      </div>
+
+      <div id="repoView" style="display: none;">
+        <div class="summary" id="summary"></div>
+
+        <hr class="hr" />
+        <div class="row">
+          <strong style="font-size:13px;">变更</strong>
+          <span class="spacer"></span>
+          <button id="stageAll" class="ghost">暂存全部</button>
+          <button id="unstageAll" class="ghost">取消全部暂存</button>
+        </div>
+
+        <div class="panel-scroll">
+          <div class="section">
+            <div class="file-list">
+              <div class="file-group-title">
+                <span>已暂存（待提交）<span id="stagedCount" class="badge">0</span></span>
+                <button class="link" id="unstageSel">取消暂存选中</button>
+              </div>
+              <div id="stagedList"></div>
+            </div>
+          </div>
+          <div class="section">
+            <div class="file-list">
+              <div class="file-group-title">
+                <span>未暂存<span id="unstagedCount" class="badge warn">0</span></span>
+                <span>
+                  <button class="link" id="stageSel">暂存选中</button>
+                  <button class="link" id="discardSel" style="color:#f56c6c;margin-left:10px;">放弃选中修改</button>
+                </span>
+              </div>
+              <div id="unstagedList"></div>
+            </div>
+          </div>
+          <div class="section">
+            <div class="file-list">
+              <div class="file-group-title">
+                <span>未跟踪<span id="untrackedCount" class="badge">0</span></span>
+                <button class="link" id="stageTracked">暂存选中</button>
+              </div>
+              <div id="untrackedList"></div>
+            </div>
+          </div>
+          <div class="section" id="conflictSection" style="display:none;">
+            <div class="file-list">
+              <div class="file-group-title"><span class="badge danger">冲突待解决</span><span></span></div>
+              <div id="conflictedList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="row">
-      <button id="pull">拉取</button>
-      <button id="push">推送</button>
-      <button id="fetch" class="ghost">获取</button>
-      <button id="init" class="ghost">初始化</button>
+    <!-- ── 提交 / 推送 ──────────────────────────────────── -->
+    <div class="panel" data-panel="commit">
+      <div class="section">
+        <div class="section-title">提交</div>
+        <textarea id="msg" rows="3" placeholder="提交信息（必填）"></textarea>
+        <div class="row" style="margin-top: 8px;">
+          <button id="doCommit">提交已暂存</button>
+          <label style="display:flex;align-items:center;gap:4px;color:#606266;">
+            <input type="checkbox" id="commitSelected" /> 只提交选中的文件
+          </label>
+          <span class="hint" id="commitHint"></span>
+        </div>
+      </div>
+
+      <hr class="hr" />
+
+      <div class="section">
+        <div class="section-title">远程同步</div>
+        <div class="row">
+          <label>远程</label>
+          <select id="pushRemote"><option value="">默认</option></select>
+          <label>分支</label>
+          <input type="text" id="pushBranch" placeholder="留空 = 当前分支" />
+          <label style="display:flex;align-items:center;gap:4px;color:#606266;">
+            <input type="checkbox" id="setUpstream" /> 设为上游（-u）
+          </label>
+        </div>
+        <div class="row">
+          <button id="doPull">拉取</button>
+          <button id="doFetch" class="ghost">获取远端更新</button>
+          <button id="doPush">推送</button>
+          <span class="hint" id="syncHint"></span>
+        </div>
+      </div>
+
+      <hr class="hr" />
+      <div class="section">
+        <div class="section-title">输出</div>
+        <pre class="output" id="out">（操作结果会显示在这里）</pre>
+      </div>
     </div>
 
-    <hr style="border:none;border-top:1px solid #ebeef5;margin:14px 0;" />
+    <!-- ── 设置 ─────────────────────────────────────────── -->
+    <div class="panel" data-panel="settings">
+      <div class="section">
+        <div class="section-title">提交身份</div>
+        <div class="row">
+          <label>user.name</label>
+          <input type="text" id="gitName" class="grow" placeholder="如 Your Name" />
+          <label>user.email</label>
+          <input type="text" id="gitEmail" class="grow" placeholder="如 you@example.com" />
+        </div>
+        <div class="row">
+          <label style="display:flex;align-items:center;gap:6px;color:#606266;">
+            <input type="checkbox" id="globalCfg" /> 写入全局配置（--global）
+          </label>
+          <button id="saveCfg">保存身份</button>
+          <span class="hint" id="identityHint"></span>
+        </div>
+      </div>
 
-    <div class="row">
-      <input id="gitName" placeholder="user.name（如 Your Name）" />
-      <input id="gitEmail" placeholder="user.email（如 you@example.com）" />
-    </div>
-    <div class="row">
-      <label style="display:flex;align-items:center;gap:6px;color:#606266;">
-        <input type="checkbox" id="globalCfg" checked style="flex:none;width:auto;" /> 全局配置（--global）
-      </label>
-      <button id="saveCfg">保存身份</button>
+      <hr class="hr" />
+
+      <div class="section">
+        <div class="section-title">远程仓库</div>
+        <table class="remotes">
+          <thead><tr><th>名称</th><th>地址</th><th style="width:60px;"></th></tr></thead>
+          <tbody id="remoteRows"></tbody>
+        </table>
+        <div class="empty" id="remoteEmpty">暂无远程仓库</div>
+        <div class="row" style="margin-top: 8px;">
+          <input type="text" id="remoteName" placeholder="远程名（默认 origin）" style="width:140px;" />
+          <input type="text" id="remoteUrl" class="grow" placeholder="仓库地址（https / git@…）" />
+          <button id="setRemote">保存</button>
+        </div>
+      </div>
+
+      <hr class="hr" />
+
+      <div class="section">
+        <div class="section-title">分支</div>
+        <div class="row">
+          <select id="branchSelect" class="grow"><option value="">（当前仓库无分支）</option></select>
+          <button id="switchBranch" class="ghost">切换</button>
+          <input type="text" id="newBranch" placeholder="新分支名" />
+          <button id="createBranch" class="ghost">新建并切换</button>
+        </div>
+      </div>
     </div>
 
-    <div class="row">
-      <input id="remoteName" placeholder="远程名（默认 origin）" />
-      <input id="remoteUrl" placeholder="远程仓库地址（https / ssh）" />
-      <button id="setRemote">设置远程</button>
+    <!-- ── 日志 ─────────────────────────────────────────── -->
+    <div class="panel" data-panel="log">
+      <div class="row">
+        <button id="refreshLog" class="ghost">刷新日志</button>
+        <span class="hint">点击某条提交可查看它的完整 diff</span>
+      </div>
+      <div class="panel-scroll" id="commitList" style="border:1px solid #ebeef5;border-radius:6px;"></div>
+      <pre class="output" id="diffOut" style="margin-top: 8px;">（选中提交后显示 diff）</pre>
     </div>
 
-    <pre id="out">（点「状态」开始）</pre>
-    <div class="tip">工作目录默认取文件管理器当前目录，可手动修改。命令以「当前登录用户」身份在指定目录执行；需要凭据的远程操作请确保已配置 SSH/凭据。</div>
+    <div class="statusbar" id="statusbar"><span id="statusText">就绪</span><span class="spacer"></span></div>
 
     <script>
-      var out = document.getElementById('out')
-      var dir = document.getElementById('dir')
-      var msg = document.getElementById('msg')
+      // ── 约定：所有 JSON 类调用统一走 callJson；文本类走 call ──────────────
+      var el = function (id) { return document.getElementById(id) }
+      var dirInput = el('dir')
+      var repo = null          // 最近一次 repo 快照
+      var selected = {}        // 勾中的文件路径（跨分组共用）
+      var busy = false
 
-      function setBusy(b) {
+      function setBusy(b, text) {
+        busy = b
         var btns = document.querySelectorAll('button')
         for (var i = 0; i < btns.length; i++) btns[i].disabled = b
+        var bar = el('statusbar')
+        bar.className = 'statusbar' + (b ? ' is-busy' : '')
+        el('statusText').textContent = b ? (text || '执行中…') : (text || '就绪')
       }
-      function show(text, isErr) {
-        out.className = isErr ? 'err' : ''
-        out.textContent = text || '（无输出）'
+      function setStatus(text, isErr) {
+        el('statusbar').className = 'statusbar' + (isErr ? ' is-err' : '')
+        el('statusText').textContent = text
+      }
+      function showOutput(text, isErr) {
+        var pre = el('out')
+        pre.className = 'output' + (isErr ? ' err' : '')
+        pre.textContent = text || '（无输出）'
       }
 
-      // zap.call(action, options) -> Promise<插件输出文本>
+      function cwdOpts(extra) {
+        var opts = { cwd: dirInput.value }
+        if (extra) for (var k in extra) opts[k] = extra[k]
+        return opts
+      }
+
+      /** 文本调用：结果显示在「输出」区。 */
       function call(action, extra) {
-        setBusy(true)
-        show('执行中…')
-        var opts = Object.assign({ cwd: dir.value }, extra || {})
-        return zap
-          .call(action, opts)
-          .then(function (text) { show(text) })
-          .catch(function (e) { show((e && e.message ? e.message : e), true) })
-          .then(function () { setBusy(false) })
+        setBusy(true, '正在执行 ' + action + '…')
+        return zap.call(action, cwdOpts(extra))
+          .then(function (text) {
+            var s = String(text == null ? '' : text)
+            showOutput(s)
+            setBusy(false, '完成')
+            return s
+          })
+          .catch(function (e) {
+            showOutput(String((e && e.message) || e), true)
+            setBusy(false, '失败')
+            throw e
+          })
       }
 
-      // 初始化：读取当前目录（文件管理器传入的 cwd）并回显
-      zap
-        .call('info', {})
-        .then(function (text) { if (text) dir.value = String(text).trim() })
-        .catch(function () {})
+      /** JSON 调用：后端返回单行 JSON（拿不到就报错）。 */
+      function callJson(action, extra) {
+        setBusy(true, '正在执行 ' + action + '…')
+        return zap.call(action, cwdOpts(extra))
+          .then(function (text) {
+            var obj
+            try { obj = JSON.parse(String(text)) } catch (e) { obj = null }
+            if (!obj || typeof obj !== 'object') {
+              throw new Error('插件返回了非 JSON 内容：' + String(text).slice(0, 200))
+            }
+            setBusy(false)
+            return obj
+          })
+          .catch(function (e) {
+            setStatus(String((e && e.message) || e), true)
+            setBusy(false, '失败')
+            throw e
+          })
+      }
 
-      document.getElementById('status').onclick = function () { call('status') }
-      document.getElementById('add').onclick = function () { call('add', { files: '.' }) }
-      document.getElementById('commit').onclick = function () { call('commit', { message: msg.value || 'update' }) }
-      document.getElementById('log').onclick = function () { call('log') }
-      document.getElementById('diff').onclick = function () { call('diff') }
-      document.getElementById('branch').onclick = function () { call('branch') }
-      document.getElementById('pull').onclick = function () { call('pull') }
-      document.getElementById('push').onclick = function () { call('push') }
-      document.getElementById('fetch').onclick = function () { call('fetch') }
-      document.getElementById('init').onclick = function () { call('init') }
+      function arr(v) { return Array.isArray(v) ? v : [] }
 
-      document.getElementById('saveCfg').onclick = function () {
-        call('config', {
-          name: document.getElementById('gitName').value.trim(),
-          email: document.getElementById('gitEmail').value.trim(),
-          global: document.getElementById('globalCfg').checked ? '1' : '0'
+      // ── 页签 ────────────────────────────────────────────────────────────
+      var tabs = document.querySelectorAll('.tabs button')
+      for (var t = 0; t < tabs.length; t++) {
+        tabs[t].onclick = function () {
+          for (var i = 0; i < tabs.length; i++) tabs[i].className = ''
+          this.className = 'is-active'
+          var name = this.getAttribute('data-tab')
+          var panels = document.querySelectorAll('.panel')
+          for (var j = 0; j < panels.length; j++) {
+            panels[j].className = 'panel' + (panels[j].getAttribute('data-panel') === name ? ' is-active' : '')
+          }
+          if (name === 'log') loadLog()
+        }
+      }
+
+      // ── 状态渲染 ────────────────────────────────────────────────────────
+      function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]
         })
       }
-      document.getElementById('setRemote').onclick = function () {
-        call('remote', {
-          remote: document.getElementById('remoteName').value.trim(),
-          url: document.getElementById('remoteUrl').value.trim()
+
+      function renderFiles(target, list) {
+        var box = el(target)
+        if (!list.length) {
+          box.innerHTML = '<div class="empty">无</div>'
+          return
+        }
+        var html = ''
+        for (var i = 0; i < list.length; i++) {
+          var f = list[i]
+          var cls = f.status === 'U' ? 'badge danger' : (f.status === 'D' ? 'badge warn' : 'badge')
+          html += '<label class="file-item">'
+            + '<input type="checkbox" data-path="' + escapeHtml(f.path) + '"'
+            + (selected[f.path] ? ' checked' : '') + ' />'
+            + '<span class="' + cls + '">' + escapeHtml(f.label || f.status) + '</span>'
+            + '<span class="file-path" title="' + escapeHtml(f.path) + '">' + escapeHtml(f.path) + '</span>'
+            + '</label>'
+        }
+        box.innerHTML = html
+        var boxes = box.querySelectorAll('input[type=checkbox]')
+        for (var k = 0; k < boxes.length; k++) {
+          boxes[k].onchange = function () {
+            var p = this.getAttribute('data-path')
+            if (this.checked) selected[p] = true
+            else delete selected[p]
+          }
+        }
+      }
+
+      function renderSummary(r) {
+        var sync = []
+        if (r.upstream) {
+          if (r.ahead) sync.push('↑' + r.ahead)
+          if (r.behind) sync.push('↓' + r.behind)
+          if (!sync.length) sync.push('同步')
+        } else {
+          sync.push('未设置上游')
+        }
+        var items = [
+          ['仓库', r.root],
+          ['分支', (r.branch || '—') + (r.detached ? '（游离 HEAD）' : '')],
+          ['上游', r.upstream || '—'],
+          ['领先 / 落后', sync.join(' ')],
+          ['工作区', r.clean ? '干净' : '有变更']
+        ]
+        var html = ''
+        for (var i = 0; i < items.length; i++) {
+          html += '<div class="summary-item"><div class="summary-key">' + escapeHtml(items[i][0])
+            + '</div><div class="summary-val" title="' + escapeHtml(items[i][1]) + '">'
+            + escapeHtml(items[i][1]) + '</div></div>'
+        }
+        html += '<div class="summary-item"><div class="summary-key">提交身份</div><div class="summary-val" title="'
+          + escapeHtml((r.identity && (r.identity.name || r.identity.email)) || '') + '">'
+          + escapeHtml((r.identity && (r.identity.name || r.identity.email)) || '未设置') + '</div></div>'
+        el('summary').innerHTML = html
+      }
+
+      function renderRemotes(r) {
+        var rows = el('remoteRows')
+        var list = arr(r.remotes)
+        el('remoteEmpty').style.display = list.length ? 'none' : 'block'
+        rows.innerHTML = ''
+        for (var i = 0; i < list.length; i++) {
+          (function (rm) {
+            var tr = document.createElement('tr')
+            tr.innerHTML = '<td>' + escapeHtml(rm.name) + '</td>'
+              + '<td class="url">' + escapeHtml(rm.url) + '</td>'
+              + '<td><button class="link" data-rm="' + escapeHtml(rm.name) + '">删除</button></td>'
+            rows.appendChild(tr)
+            tr.querySelector('button').onclick = function () {
+              if (!confirm('删除远程「' + rm.name + '」？')) return
+              call('remote_remove', { remote: rm.name })
+                .then(loadRepo)
+                .catch(function () {})
+            }
+          })(list[i])
+        }
+        // 推送区与「设置」里的远程下拉共用同一份数据
+        var sel = el('pushRemote')
+        var keep = sel.value
+        sel.innerHTML = '<option value="">默认</option>'
+        for (var j = 0; j < list.length; j++) {
+          var op = document.createElement('option')
+          op.value = list[j].name
+          op.textContent = list[j].name + ' — ' + list[j].url
+          sel.appendChild(op)
+        }
+        sel.value = keep
+      }
+
+      function renderBranches(r) {
+        var sel = el('branchSelect')
+        sel.innerHTML = ''
+        var list = arr(r.branches)
+        for (var i = 0; i < list.length; i++) {
+          var op = document.createElement('option')
+          op.value = list[i].name
+          op.textContent = list[i].name + (list[i].sha ? '  ' + list[i].sha : '')
+          if (list[i].name === r.branch) op.selected = true
+          sel.appendChild(op)
+        }
+        if (!list.length) sel.innerHTML = '<option value="">（尚无提交）</option>'
+      }
+
+      function renderIdentity(r) {
+        var id = r.identity || {}
+        el('gitName').value = id.name || ''
+        el('gitEmail').value = id.email || ''
+        var hint = []
+        if (id.global_name || id.global_email) hint.push('全局：' + (id.global_name || '—') + ' <' + (id.global_email || '—') + '>')
+        if (!id.name && !id.email) hint.push('当前仓库未设置身份，提交时 git 会报错')
+        el('identityHint').textContent = hint.join('；')
+      }
+
+      function renderHints(r) {
+        el('syncHint').textContent = !arr(r.remotes).length
+          ? '尚未配置远程仓库，请到「设置」页添加'
+          : (!r.upstream ? '当前分支没有上游，推送时请勾选「设为上游」' : '')
+        el('commitHint').textContent = arr(r.staged).length ? '' : '暂存区为空，先在「状态」页暂存文件'
+      }
+
+      function applyRepo(r) {
+        repo = r
+        document.getElementById('notRepo').style.display = r.is_repo ? 'none' : 'block'
+        document.getElementById('repoView').style.display = r.is_repo ? 'block' : 'none'
+        if (!r.is_repo) return
+        renderSummary(r)
+        renderFiles('stagedList', arr(r.staged))
+        renderFiles('unstagedList', arr(r.unstaged))
+        renderFiles('untrackedList', arr(r.untracked))
+        renderFiles('conflictedList', arr(r.conflicted))
+        el('stagedCount').textContent = arr(r.staged).length
+        el('unstagedCount').textContent = arr(r.unstaged).length
+        el('untrackedCount').textContent = arr(r.untracked).length
+        el('conflictSection').style.display = arr(r.conflicted).length ? 'block' : 'none'
+        renderRemotes(r)
+        renderBranches(r)
+        renderIdentity(r)
+        renderHints(r)
+      }
+
+      /** 刷新仓库状态：UI 打开时自动跑一次，之后每次写操作后再跑。 */
+      function loadRepo() {
+        return callJson('repo').then(applyRepo).catch(function () {})
+      }
+
+      // ── 日志 ────────────────────────────────────────────────────────────
+      function loadLog() {
+        if (!repo || !repo.is_repo) return
+        return callJson('log', { n: '50' })
+          .then(function (r) {
+            var list = arr(r.commits)
+            var box = el('commitList')
+            if (!list.length) {
+              box.innerHTML = '<div class="empty">还没有提交记录</div>'
+              return
+            }
+            var html = ''
+            for (var i = 0; i < list.length; i++) {
+              html += '<div class="commit" data-sha="' + escapeHtml(list[i].hash) + '">'
+                + '<span class="commit-sha">' + escapeHtml(list[i].hash.slice(0, 8)) + '</span>'
+                + '<span class="commit-subject" title="' + escapeHtml(list[i].subject) + '">'
+                + escapeHtml(list[i].subject) + '</span>'
+                + '<span class="commit-meta">' + escapeHtml(list[i].author) + ' · '
+                + escapeHtml(list[i].date) + '</span></div>'
+            }
+            box.innerHTML = html
+            var rows = box.querySelectorAll('.commit')
+            for (var k = 0; k < rows.length; k++) {
+              rows[k].onclick = function () {
+                var sha = this.getAttribute('data-sha')
+                call('diff', { commit: sha })
+                  .then(function (text) { el('diffOut').className = 'output'; el('diffOut').textContent = text })
+                  .catch(function (e) {
+                    el('diffOut').className = 'output err'
+                    el('diffOut').textContent = String((e && e.message) || e)
+                  })
+              }
+            }
+          })
+          .catch(function () {})
+      }
+
+      // ── 按钮绑定 ────────────────────────────────────────────────────────
+      function selectedPaths() {
+        var out = []
+        for (var p in selected) if (selected[p]) out.push(p)
+        return out
+      }
+      function reloadAfter(action, extra, after) {
+        return call(action, extra)
+          .then(function (text) {
+            if (after) after()
+            return loadRepo()
+          })
+          .catch(function () {})
+      }
+
+      el('applyDir').onclick = function () { loadRepo() }
+      el('reload').onclick = function () { loadRepo() }
+      el('stageSel').onclick = function () {
+        var files = selectedPaths()
+        if (!files.length) return setStatus('请先勾选要暂存的文件', true)
+        reloadAfter('add', { files: JSON.stringify(files) })
+      }
+      el('stageTracked').onclick = function () {
+        var files = selectedPaths()
+        if (!files.length) return setStatus('请先勾选要暂存的文件', true)
+        reloadAfter('add', { files: JSON.stringify(files) })
+      }
+      el('stageAll').onclick = function () { reloadAfter('add') }
+      el('discardSel').onclick = function () {
+        var files = selectedPaths()
+        if (!files.length) return setStatus('请先勾选要放弃修改的文件', true)
+        if (!confirm('放弃这 ' + files.length + ' 个文件的本地修改？该操作不可撤销。')) return
+        reloadAfter('restore', { files: JSON.stringify(files) })
+      }
+      el('unstageSel').onclick = function () {
+        var files = selectedPaths()
+        if (!files.length) return setStatus('请先勾选要取消暂存的文件', true)
+        reloadAfter('unstage', { files: JSON.stringify(files) })
+      }
+      el('unstageAll').onclick = function () {
+        if (!confirm('取消全部已暂存的变更？（文件内容保留）')) return
+        reloadAfter('unstage')
+      }
+      el('doInit').onclick = function () {
+        reloadAfter('init', { branch: el('initBranch').value.trim() })
+      }
+      el('doCommit').onclick = function () {
+        var msg = el('msg').value.trim()
+        if (!msg) return setStatus('请填写提交信息', true)
+        var extra = { message: msg }
+        if (el('commitSelected').checked) {
+          var files = selectedPaths()
+          if (!files.length) return setStatus('勾选了「只提交选中文件」但没有勾任何文件', true)
+          extra.files = JSON.stringify(files)
+        }
+        reloadAfter('commit', extra, function () {
+          el('msg').value = ''
+          el('commitSelected').checked = false
+          selected = {}
         })
       }
+      el('doPush').onclick = function () {
+        reloadAfter('push', {
+          remote: el('pushRemote').value,
+          branch: el('pushBranch').value.trim(),
+          set_upstream: el('setUpstream').checked ? '1' : '0'
+        })
+      }
+      el('doPull').onclick = function () {
+        reloadAfter('pull', {
+          remote: el('pushRemote').value,
+          branch: el('pushBranch').value.trim()
+        })
+      }
+      el('doFetch').onclick = function () { reloadAfter('fetch') }
+
+      el('saveCfg').onclick = function () {
+        reloadAfter('config', {
+          name: el('gitName').value.trim(),
+          email: el('gitEmail').value.trim(),
+          global: el('globalCfg').checked ? '1' : '0'
+        })
+      }
+      el('setRemote').onclick = function () {
+        reloadAfter('remote', {
+          remote: el('remoteName').value.trim(),
+          url: el('remoteUrl').value.trim()
+        })
+      }
+      el('switchBranch').onclick = function () {
+        var b = el('branchSelect').value
+        if (!b) return
+        reloadAfter('checkout', { branch: b })
+      }
+      el('createBranch').onclick = function () {
+        var b = el('newBranch').value.trim()
+        if (!b) return setStatus('请填写新分支名', true)
+        reloadAfter('branch_create', { branch: b })
+      }
+      el('refreshLog').onclick = function () { loadLog() }
+
+      // ── 启动：先取宿主传来的工作目录，再自动拉一次仓库状态 ─────────────
+      zap.call('info', {})
+        .then(function (text) {
+          if (text) dirInput.value = String(text).trim()
+          return loadRepo()
+        })
+        .catch(function () {
+          setStatus('未能读取初始状态，请手动填写目录后点「应用」', true)
+        })
     </script>
   </body>
 </html>

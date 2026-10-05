@@ -3,7 +3,7 @@
 name: git
 title: Git 管理
 description: 在文件管理器当前目录里管理 Git 仓库：状态、提交、推送、拉取、分支等。点开编辑器顶部工具栏的 Git 即可使用。
-version: 1.0.0
+version: 1.1.0
 category: plugins
 # 仅 admin 可安装（插件装在系统目录，但运行时以「调用方面板用户」身份执行；安装受后端权限二次把关）。
 roles: [admin]
