@@ -78,6 +78,7 @@ actions:
   ssh_use: 设置 Git 使用的 SSH 密钥
   ssh_clear: 清除 core.sshCommand
   ssh_test: 测试 SSH 连接
+  redeploy: 重新部署
 
 # 多语言：基准字段写中文，这里给一份 en-US 覆盖层。
 # 面板语言切换（与 Element Plus 同一套）时，列表里的标题 / 描述 / 入口文案 /
@@ -134,6 +135,7 @@ i18n:
       ssh_use: Use SSH key
       ssh_clear: Clear core.sshCommand
       ssh_test: Test SSH connection
+      redeploy: Redeploy
     ui:
       "SSH 密钥（git 走 ssh 远程时用哪把钥匙）": "SSH key (which key git uses for ssh remotes)"
       "hard（丢弃改动，不可恢复）": "hard (discards changes, unrecoverable)"

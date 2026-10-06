@@ -1094,8 +1094,40 @@ local function action_ssh_test(cwd)
 end
 
 --- 默认入口：按 ctx.action 分发。
+--- 通过现有管理 API 触发「应用重新部署」（git pull + 重建 + 重启）。
+--- 凭证用用户自建的 API Token（PAT），以 Bearer 方式携带；目标站点 / 应用由 options 提供。
+--- 面板地址（panel_url）由后端在触发时注入，无需用户手填。
+local function action_redeploy()
+  local panel_url = trim(zap.opt('panel_url', ''))
+  local site_id   = zap.opt_number('site_id', 0)
+  local name      = trim(zap.opt('name', ''))
+  local token     = trim(zap.opt('api_token', ''))
+
+  if panel_url == '' then zap.fail('缺少面板地址（panel_url，应由触发器注入）') end
+  if site_id <= 0  then zap.fail('缺少或无效的 site_id') end
+  if name == ''    then zap.fail('缺少应用名 name') end
+  if token == ''   then zap.fail('缺少 API Token（api_token）') end
+
+  local status, payload = zap.http.request {
+    url     = panel_url .. '/site/app/git-update',
+    method  = 'POST',
+    timeout = 30,
+    headers = { Authorization = 'Bearer ' .. token },
+    json    = { site_id = site_id, name = name },
+  }
+  if status == nil then
+    zap.fail('调用重新部署接口失败：' .. tostring(payload))
+  end
+  if status ~= 200 then
+    zap.fail('重新部署被拒绝（HTTP ' .. tostring(status) .. '）：' .. tostring(payload))
+  end
+  zap.log(zap.json_encode({ ok = true, http_code = status, body = payload }))
+end
+
 function on_run(ctx)
   local action = ctx.action or 'status'
+  -- 重新部署不依赖本地仓库目录：直接调管理 API，提前返回
+  if action == 'redeploy' then return action_redeploy() end
   local cwd = safe_cwd()
 
   if action == 'info' then
