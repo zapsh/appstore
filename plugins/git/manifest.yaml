@@ -8,6 +8,10 @@ author: zap
 # 改成 root 所有、产生权限问题；工作目录由文件管理器通过 options.cwd 传入。
 scope: user
 
+# 依赖声明：装之前先确认服务器上有 git，别等到点了按钮才报 command not found
+requires:
+  commands: [git]
+
 # 自带界面：同时挂在两个槽位 ——
 #   file.editor     文件编辑器 / 文件管理器顶部工具栏
 #   file.context    文件管理器右键菜单（把选中的文件路径带给插件）
@@ -74,3 +78,59 @@ actions:
   ssh_use: 设置 Git 使用的 SSH 密钥
   ssh_clear: 清除 core.sshCommand
   ssh_test: 测试 SSH 连接
+
+# 多语言：基准字段写中文，这里给一份 en-US 覆盖层。
+# 面板语言切换（与 Element Plus 同一套）时，列表里的标题 / 描述 / 入口文案 /
+# 动作名会自动换成对应语言；没翻到的键保留基准值，所以可以慢慢补齐。
+i18n:
+  en-US:
+    title: Git manager
+    description: Manage Git repositories from the file manager — status, staging, commits, push, stash, tags, merge/rebase, reset, branch upkeep, plus identity, remote and SSH key settings
+    label: Git
+    actions:
+      status: Status
+      repo: Snapshot
+      log: Log
+      diff: Diff
+      add: Stage
+      unstage: Unstage
+      restore: Discard changes
+      commit: Commit
+      branch: Branches
+      checkout: Switch branch
+      branch_create: New branch
+      pull: Pull
+      push: Push
+      fetch: Fetch
+      init: Initialize
+      clone: Clone repository
+      stash_list: Stashes
+      stash_save: Stash changes
+      stash_apply: Apply stash
+      stash_pop: Pop stash
+      stash_drop: Drop stash
+      tag_list: Tags
+      tag_create: Create tag
+      tag_push: Push tags
+      tag_delete: Delete tag
+      merge: Merge
+      merge_continue: Continue merge
+      merge_abort: Abort merge
+      rebase: Rebase
+      rebase_continue: Continue rebase
+      rebase_abort: Abort rebase
+      reset: Reset to a commit
+      revert: Revert a commit
+      branch_delete: Delete branch
+      branch_rename: Rename branch
+      branch_delete_remote: Delete remote branch
+      ignore: Write .gitignore
+      blame: Blame
+      config: Save identity
+      config_get: Load identity
+      remote: Set remote
+      remote_remove: Remove remote
+      ssh_keys: SSH keys
+      ssh_use: Use SSH key
+      ssh_clear: Clear core.sshCommand
+      ssh_test: Test SSH connection
