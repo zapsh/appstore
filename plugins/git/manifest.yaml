@@ -1,6 +1,6 @@
 name: git
 title: Git 管理
-version: 1.3.0
+version: 1.4.0
 description: 在文件管理器当前目录里管理 Git 仓库（状态 / 暂存 / 提交 / 推送 / 储藏 / 标签 / 合并变基 / 回退 / 分支维护 / 身份、远程与 SSH 密钥设置）
 author: zap
 
@@ -8,9 +8,13 @@ author: zap
 # 改成 root 所有、产生权限问题；工作目录由文件管理器通过 options.cwd 传入。
 scope: user
 
-# 自带界面：嵌在文件管理器编辑器顶部工具栏，点开后在指定目录里跑 git。
+# 自带界面：同时挂在两个槽位 ——
+#   file.editor     文件编辑器 / 文件管理器顶部工具栏
+#   file.context    文件管理器右键菜单（把选中的文件路径带给插件）
 ui:
-  placement: file.editor
+  placement:
+    - file.editor
+    - file.context
   label: Git
   icon: material-symbols:deployed-code
   html: ui.html
@@ -27,36 +31,39 @@ actions:
   diff: 差异
   add: 暂存
   unstage: 取消暂存
-  restore: 放弃修改
+  # 危险 / 破坏性动作：宿主执行前弹一次确认，只读演示账号在后端被直接拒绝
+  restore: { label: 放弃修改, dangerous: true }
   commit: 提交
   branch: 分支列表
   checkout: 切换分支
   branch_create: 新建分支
-  pull: 拉取
-  push: 推送
-  fetch: 获取
+  # 网络类动作用 action 级 async：只把这几个长操作变成可订阅日志流 + 可取消，
+  # 其余读写保持同步（插件整体不用设 async: true）
+  pull: { label: 拉取, async: true }
+  push: { label: 推送, async: true }
+  fetch: { label: 获取, async: true }
   init: 初始化
-  clone: 克隆仓库
+  clone: { label: 克隆仓库, async: true }
   stash_list: 储藏列表
   stash_save: 储藏改动
   stash_apply: 应用储藏
   stash_pop: 弹出储藏
-  stash_drop: 删除储藏
+  stash_drop: { label: 删除储藏, dangerous: true }
   tag_list: 标签列表
   tag_create: 打标签
-  tag_push: 推送标签
-  tag_delete: 删除标签
+  tag_push: { label: 推送标签, async: true }
+  tag_delete: { label: 删除标签, dangerous: true }
   merge: 合并分支
   merge_continue: 继续合并
-  merge_abort: 中止合并
+  merge_abort: { label: 中止合并, dangerous: true }
   rebase: 变基
   rebase_continue: 继续变基
-  rebase_abort: 中止变基
-  reset: 回退到某次提交
+  rebase_abort: { label: 中止变基, dangerous: true }
+  reset: { label: 回退到某次提交, dangerous: true }
   revert: 回滚某次提交
-  branch_delete: 删除分支
+  branch_delete: { label: 删除分支, dangerous: true }
   branch_rename: 重命名分支
-  branch_delete_remote: 删除远程分支
+  branch_delete_remote: { label: 删除远程分支, async: true, dangerous: true }
   ignore: 写入 .gitignore
   blame: 逐行作者
   config: 保存身份
