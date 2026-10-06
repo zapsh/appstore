@@ -96,6 +96,33 @@ local function git_or_fail(args, cwd, what)
   return out
 end
 
+--- 网络类操作（push / pull / fetch / clone / 推标签 / 删远程分支）专用：
+--- 同步插件没有取消通道（只有 async 插件才有 SSE + 取消按钮），一旦卡在认证或死链上
+--- 就会把整个任务挂住。统一用 `timeout` 兜底，并把超时翻译成人话。
+local NET_TIMEOUT = '120'
+
+local function git_net(args, cwd)
+  local full = { NET_TIMEOUT, 'git' }
+  for _, a in ipairs(args) do full[#full + 1] = a end
+  return zap.try_run('timeout', full, { cwd = cwd })
+end
+
+local function net_fail(out, what)
+  out = trim(out)
+  if out:find('命令退出码 124', 1, true) then
+    zap.fail((what or '操作') .. '超过 ' .. NET_TIMEOUT .. ' 秒仍未结束，多半是网络不通或认证卡住'
+      .. '（ssh 远程可先到「设置 → SSH 密钥」点「测试连接」验证）。')
+  end
+  zap.fail(out ~= '' and out or ((what or 'git') .. ' 执行失败'))
+end
+
+--- 跑网络类 git（失败即抛错，超时另有提示）。
+local function git_net_or_fail(args, cwd, what)
+  local ok, out = git_net(args, cwd)
+  if not ok then net_fail(out, what) end
+  return trim(out)
+end
+
 --- 取并校验工作目录：必须非空、且真实存在且为目录。
 local function safe_cwd()
   local cwd = zap.opt('cwd', '')
@@ -216,6 +243,25 @@ local function collect_branches(cwd)
   return list
 end
 
+--- 仓库是否处在「合并 / 变基 / 拣选」中途：.git 目录下的临时文件说了算。
+--- 有了它前端才能给出「继续 / 中止」按钮，而不是让用户去命令行收尾。
+local function collect_state(cwd)
+  local _, git_dir = git_out({ 'rev-parse', '--absolute-git-dir' }, cwd)
+  if git_dir == '' then return 'normal' end
+  if zap.fs.is_file(zap.path.join(git_dir, 'MERGE_HEAD')) then return 'merge' end
+  if zap.fs.is_dir(zap.path.join(git_dir, 'rebase-merge'))
+    or zap.fs.is_dir(zap.path.join(git_dir, 'rebase-apply')) then return 'rebase' end
+  if zap.fs.is_file(zap.path.join(git_dir, 'CHERRY_PICK_HEAD')) then return 'cherry-pick' end
+  return 'normal'
+end
+
+--- 储藏数量（概览卡上提示「有 N 条储藏」，免得切了分支才发现东西被收起来了）。
+local function collect_stash_count(cwd)
+  local ok, out = git_out({ 'stash', 'list' }, cwd)
+  if not ok or out == '' then return 0 end
+  return #zap.str.lines(out)
+end
+
 -- ── 动作实现 ────────────────────────────────────────────────
 
 --- repo：一次性把面板需要的东西全部取回（进入 / 刷新「状态」页签时调用，避免逐按钮问后端）。
@@ -238,6 +284,8 @@ local function action_repo(cwd)
     ahead = ahead,
     behind = behind,
     clean = (#staged + #unstaged + #untracked + #conflicted) == 0,
+    state = collect_state(cwd),
+    stash_count = collect_stash_count(cwd),
     identity = collect_identity(cwd),
     remotes = collect_remotes(cwd),
     branches = collect_branches(cwd),
@@ -316,33 +364,44 @@ local function action_push(cwd)
   local remote = trim(zap.opt('remote', ''))
   local branch = trim(zap.opt('branch', ''))
   local args = { 'push' }
+  if opt_bool('set_upstream', false) then
+    if remote == '' then zap.fail('勾选「设为上游」时需要先指定远程') end
+    args[#args + 1] = '-u'
+  end
+  -- 强推也走 --force-with-lease：远端被别人推过就拒绝，比 --force 安全
+  if opt_bool('force', false) then args[#args + 1] = '--force-with-lease' end
   if remote ~= '' then
     args[#args + 1] = remote
     if branch ~= '' then args[#args + 1] = branch end
   end
-  if opt_bool('set_upstream', false) then
-    if remote == '' then zap.fail('勾选「设为上游」时需要先指定远程') end
-    table.insert(args, 2, '-u')
-  end
-  local out = git_or_fail(args, cwd, '推送')
+  local out = git_net_or_fail(args, cwd, '推送')
   zap.log(out ~= '' and out or '推送完成')
 end
 
 local function action_pull(cwd)
   local args = { 'pull' }
   if opt_bool('rebase', false) then args[#args + 1] = '--rebase' end
+  if opt_bool('autostash', false) then args[#args + 1] = '--autostash' end
   local remote = trim(zap.opt('remote', ''))
   local branch = trim(zap.opt('branch', ''))
   if remote ~= '' then
     args[#args + 1] = remote
     if branch ~= '' then args[#args + 1] = branch end
   end
-  local out = git_or_fail(args, cwd, '拉取')
+  local ok, out = git_net(args, cwd)
+  out = trim(out)
+  if not ok then
+    if out:find('CONFLICT', 1, true) then
+      zap.log('拉取时产生冲突：\n' .. out .. '\n\n解决冲突 →「状态」页暂存 → 点「继续合并」或「中止」。')
+      return
+    end
+    net_fail(out, '拉取')
+  end
   zap.log(out ~= '' and out or '已是最新')
 end
 
 local function action_fetch(cwd)
-  local out = git_or_fail({ 'fetch', '--all', '--prune' }, cwd, '获取')
+  local out = git_net_or_fail({ 'fetch', '--all', '--prune' }, cwd, '获取远端更新')
   zap.log(out ~= '' and out or '已同步远端引用')
 end
 
@@ -383,14 +442,23 @@ end
 local function action_log(cwd)
   local n = trim(zap.opt('n', '30'))
   if not n:match('^%d+$') then n = '30' end
-  local ok, out = git_out(
-    { 'log', '-n', n, '--date=short', '--pretty=format:%H' .. string.char(31) .. '%an' .. string.char(31) .. '%ad' .. string.char(31) .. '%s' },
-    cwd
-  )
+  local sep = string.char(31)
+  local args = { 'log', '-n', n, '--date=short' }
+  if opt_bool('graph', false) then args[#args + 1] = '--graph' end
+  args[#args + 1] = '--pretty=format:%H' .. sep .. '%an' .. sep .. '%ad' .. sep .. '%s'
+  -- 单文件历史：路径用 `--` 隔开，避免和分支名撞车
+  local file = safe_rel_path(zap.opt('file', ''))
+  if file then
+    args[#args + 1] = '--'
+    args[#args + 1] = file
+  end
+  local ok, out = git_out(args, cwd)
   local list = {}
   if ok then
     for _, line in ipairs(zap.str.lines(out)) do
-      local parts = zap.str.split(line, string.char(31), true)
+      -- --graph 会在行首画 `* ` / `| ` 之类的图线，先剥掉再拆字段
+      line = line:gsub('^[%*|\\/ _%.%-]+', '')
+      local parts = zap.str.split(line, sep, true)
       if #parts >= 4 then
         list[#list + 1] = { hash = parts[1], author = parts[2], date = parts[3], subject = parts[4] }
       end
@@ -474,6 +542,343 @@ local function action_remote_remove(cwd)
   local remote = safe_name(zap.opt('remote', ''), '远程名')
   git_or_fail({ 'remote', 'remove', remote }, cwd, '删除远程')
   zap.log('已删除远程「' .. remote .. '」')
+end
+
+-- ── 克隆 ────────────────────────────────────────────────────
+
+--- 克隆仓库到当前目录下的子目录（dest 留空则用仓库名）。
+--- 支持 -b 指定分支、--depth 浅克隆；地址不允许以 - 开头（否则会被当成选项）。
+local function action_clone(cwd)
+  local url = trim(zap.opt('url', ''))
+  if url == '' then zap.fail('请填写要克隆的仓库地址') end
+  if url:sub(1, 1) == '-' then zap.fail('仓库地址不能以 - 开头') end
+  local args = { 'clone' }
+  local branch = trim(zap.opt('branch', ''))
+  if branch ~= '' then
+    args[#args + 1] = '-b'
+    args[#args + 1] = safe_name(branch, '分支名')
+  end
+  local depth = trim(zap.opt('depth', ''))
+  if depth ~= '' then
+    if not depth:match('^%d+$') then zap.fail('克隆深度必须是数字') end
+    args[#args + 1] = '--depth'
+    args[#args + 1] = depth
+  end
+  args[#args + 1] = url
+  local dest = trim(zap.opt('dest', ''))
+  if dest ~= '' then
+    local rel = safe_rel_path(dest)
+    if not rel then zap.fail('目标目录不合法：' .. dest) end
+    if zap.fs.exists(zap.path.join(cwd, rel)) then zap.fail('目标位置已存在：' .. rel) end
+    args[#args + 1] = rel
+  end
+  local out = git_net_or_fail(args, cwd, '克隆')
+  zap.log(out ~= '' and out or '克隆完成')
+end
+
+-- ── 储藏（stash）────────────────────────────────────────────
+--
+-- 切分支 / 拉代码前把工作区临时收起来。列表用 JSON，写操作返回文本。
+
+--- `stash@{n}` 里的序号：只放行数字，避免拼出别的 ref 语法。
+local function stash_ref()
+  local i = trim(zap.opt('index', '0'))
+  if not i:match('^%d+$') then zap.fail('储藏序号必须是数字') end
+  return 'stash@{' .. i .. '}'
+end
+
+local function action_stash_list(cwd)
+  local ok, out = git_out({ 'stash', 'list' }, cwd)
+  local list = {}
+  if ok then
+    for _, line in ipairs(zap.str.lines(out)) do
+      local idx = line:match('^stash@{(%d+)}')
+      if idx then
+        list[#list + 1] = {
+          index = idx,
+          ref = 'stash@{' .. idx .. '}',
+          message = line:match(':%s*(.*)$') or '',
+        }
+      end
+    end
+  end
+  zap.log(zap.json_encode({ ok = true, entries = list }))
+end
+
+local function action_stash_save(cwd)
+  local args = { 'stash', 'push' }
+  if opt_bool('untracked', false) then args[#args + 1] = '-u' end
+  local msg = trim(zap.opt('message', ''))
+  if msg ~= '' then
+    args[#args + 1] = '-m'
+    args[#args + 1] = msg
+  end
+  local out = git_or_fail(args, cwd, '储藏')
+  zap.log(out ~= '' and out or '已储藏，工作区回到干净状态')
+end
+
+local function action_stash_apply(cwd)
+  local ref = stash_ref()
+  local ok, out = git({ 'stash', 'apply', ref }, cwd)
+  out = trim(out)
+  if not ok then
+    -- 应用时撞车很常见（同一文件又被改了），把冲突说清楚而不是只报退出码
+    if out:find('CONFLICT', 1, true) then
+      zap.log('应用储藏时产生冲突：\n' .. out .. '\n\n储藏仍保留在列表里，解决后可再来一次。')
+      return
+    end
+    zap.fail(out ~= '' and out or '应用储藏失败')
+  end
+  zap.log(out ~= '' and out or ('已应用 ' .. ref))
+end
+
+local function action_stash_pop(cwd)
+  local ref = stash_ref()
+  local ok, out = git({ 'stash', 'pop', ref }, cwd)
+  out = trim(out)
+  if not ok then
+    if out:find('CONFLICT', 1, true) then
+      zap.log('弹出储藏时产生冲突：\n' .. out .. '\n\n储藏没有被删除，解决后可再到本页「删除」。')
+      return
+    end
+    zap.fail(out ~= '' and out or '弹出储藏失败')
+  end
+  zap.log(out ~= '' and out or ('已弹出并删除 ' .. ref))
+end
+
+local function action_stash_drop(cwd)
+  local ref = stash_ref()
+  local out = git_or_fail({ 'stash', 'drop', ref }, cwd, '删除储藏')
+  zap.log(out ~= '' and out or ('已删除 ' .. ref .. '（内容不可恢复）'))
+end
+
+-- ── 标签（tag）──────────────────────────────────────────────
+
+local TAB = string.char(9)
+
+local function action_tag_list(cwd)
+  local list = {}
+  local ok, out = git_out(
+    { 'tag', '--sort=-creatordate', '--format=%(refname:short)' .. TAB .. '%(objectname:short)' },
+    cwd
+  )
+  if ok then
+    for _, line in ipairs(zap.str.lines(out)) do
+      local name, sha = line:match('^(.-)' .. TAB .. '(.*)$')
+      if name then list[#list + 1] = { name = name, sha = sha } end
+    end
+  end
+  zap.log(zap.json_encode({ ok = true, tags = list }))
+end
+
+--- 打标签：给了 message 就打附注标签（-a -m），否则打轻量标签；commit 留空 = 当前 HEAD。
+local function action_tag_create(cwd)
+  local name = safe_name(zap.opt('name', ''), '标签名')
+  local msg = trim(zap.opt('message', ''))
+  local args = { 'tag' }
+  if msg ~= '' then
+    args[#args + 1] = '-a'
+    args[#args + 1] = '-m'
+    args[#args + 1] = msg
+  end
+  args[#args + 1] = name
+  local commit = trim(zap.opt('commit', ''))
+  if commit ~= '' then args[#args + 1] = safe_name(commit, '提交号') end
+  local out = git_or_fail(args, cwd, '打标签')
+  zap.log(out ~= '' and out or ('已创建标签 ' .. name))
+end
+
+--- 推送标签：name 留空 = `push --tags`。
+local function action_tag_push(cwd)
+  local remote = trim(zap.opt('remote', ''))
+  if remote == '' then remote = 'origin' end
+  remote = safe_name(remote, '远程名')
+  local name = trim(zap.opt('name', ''))
+  local args = { 'push', remote }
+  if name == '' then
+    args[#args + 1] = '--tags'
+  else
+    args[#args + 1] = 'refs/tags/' .. safe_name(name, '标签名')
+  end
+  local out = git_net_or_fail(args, cwd, '推送标签')
+  zap.log(out ~= '' and out or '已推送标签')
+end
+
+--- 删本地标签；给了 remote 就顺带删远程（远程删除走网络，套 timeout）。
+local function action_tag_delete(cwd)
+  local name = safe_name(zap.opt('name', ''), '标签名')
+  local out = git_or_fail({ 'tag', '-d', name }, cwd, '删除标签')
+  local remote = trim(zap.opt('remote', ''))
+  local extra = ''
+  if remote ~= '' then
+    remote = safe_name(remote, '远程名')
+    local r = git_net_or_fail({ 'push', remote, '--delete', 'refs/tags/' .. name }, cwd, '删除远程标签')
+    extra = '\n远程：' .. (r ~= '' and r or '已删除')
+  end
+  zap.log((out ~= '' and out or ('已删除本地标签 ' .. name)) .. extra)
+end
+
+-- ── 合并 / 变基（含冲突收尾）────────────────────────────────
+--
+-- 冲突不是「失败」：把冲突清单回给用户，让他在「状态」页暂存后继续或中止。
+-- 继续 / 回滚提交都要起编辑器，用 `-c core.editor=true` 让它别卡在等输入上。
+
+local CONFLICT_TAIL = '\n\n解决冲突后到「状态」页暂存文件，再点「继续合并 / 继续变基」，'
+  .. '或点「中止」放弃这次操作。'
+
+local function action_merge(cwd)
+  local branch = safe_name(zap.opt('branch', ''), '分支名')
+  local ok, out = git({ 'merge', '--no-edit', branch }, cwd)
+  out = trim(out)
+  if not ok then
+    if out:find('CONFLICT', 1, true) then
+      zap.log('合并出现冲突：\n' .. out .. CONFLICT_TAIL)
+      return
+    end
+    zap.fail(out ~= '' and out or '合并失败')
+  end
+  zap.log(out ~= '' and out or ('已合并 ' .. branch))
+end
+
+local function action_merge_continue(cwd)
+  local out = git_or_fail({ '-c', 'core.editor=true', 'merge', '--continue' }, cwd, '继续合并')
+  zap.log(out ~= '' and out or '合并已完成')
+end
+
+local function action_merge_abort(cwd)
+  local out = git_or_fail({ 'merge', '--abort' }, cwd, '中止合并')
+  zap.log(out ~= '' and out or '已中止合并，回到操作前的状态')
+end
+
+local function action_rebase(cwd)
+  local branch = safe_name(zap.opt('branch', ''), '分支名')
+  local ok, out = git({ 'rebase', branch }, cwd)
+  out = trim(out)
+  if not ok then
+    if out:find('CONFLICT', 1, true) or out:find('could not apply', 1, true) then
+      zap.log('变基在某个提交上停住了：\n' .. out .. CONFLICT_TAIL)
+      return
+    end
+    zap.fail(out ~= '' and out or '变基失败')
+  end
+  zap.log(out ~= '' and out or ('已变基到 ' .. branch))
+end
+
+local function action_rebase_continue(cwd)
+  local out = git_or_fail({ '-c', 'core.editor=true', 'rebase', '--continue' }, cwd, '继续变基')
+  zap.log(out ~= '' and out or '变基已完成')
+end
+
+local function action_rebase_abort(cwd)
+  local out = git_or_fail({ 'rebase', '--abort' }, cwd, '中止变基')
+  zap.log(out ~= '' and out or '已中止变基，回到操作前的状态')
+end
+
+-- ── 回退 / 回滚 ─────────────────────────────────────────────
+
+--- reset：soft 保留改动在暂存区 / mixed 保留在工作区 / hard 丢弃（前端须二次确认）。
+local function action_reset(cwd)
+  local mode = trim(zap.opt('mode', 'mixed')):lower()
+  if mode ~= 'soft' and mode ~= 'mixed' and mode ~= 'hard' then
+    zap.fail('回退模式只能是 soft / mixed / hard')
+  end
+  local commit = safe_name(zap.opt('commit', 'HEAD'), '提交号')
+  local out = git_or_fail({ 'reset', '--' .. mode, commit }, cwd, '回退')
+  zap.log(out ~= '' and out or ('已回退到 ' .. commit .. '（--' .. mode .. '）'))
+end
+
+--- revert：生成一个「反向提交」，不改写历史（已推送的分支应当用它而不是 reset）。
+local function action_revert(cwd)
+  local commit = safe_name(zap.opt('commit', ''), '提交号')
+  local ok, out = git({ '-c', 'core.editor=true', 'revert', '--no-edit', commit }, cwd)
+  out = trim(out)
+  if not ok then
+    if out:find('CONFLICT', 1, true) then
+      zap.log('回滚时产生冲突：\n' .. out .. CONFLICT_TAIL)
+      return
+    end
+    zap.fail(out ~= '' and out or '回滚失败')
+  end
+  zap.log(out ~= '' and out or ('已回滚 ' .. commit))
+end
+
+-- ── 分支维护 ────────────────────────────────────────────────
+
+local function action_branch_delete(cwd)
+  local branch = safe_name(zap.opt('branch', ''), '分支名')
+  local _, current = git_out({ 'symbolic-ref', '--short', '-q', 'HEAD' }, cwd)
+  if branch == trim(current) then zap.fail('不能删除当前所在分支，请先切到别的分支') end
+  local args = { 'branch' }
+  args[#args + 1] = opt_bool('force', false) and '-D' or '-d'
+  args[#args + 1] = branch
+  local ok, out = git(args, cwd)
+  out = trim(out)
+  if not ok then
+    -- 未合并的分支 -d 会被拒，提示可以强删
+    if out:find('not fully merged', 1, true) then
+      zap.fail(out .. '\n\n若确认丢弃这些提交，可勾选「强制删除（-D）」。')
+    end
+    zap.fail(out ~= '' and out or '删除分支失败')
+  end
+  zap.log(out ~= '' and out or ('已删除分支 ' .. branch))
+end
+
+local function action_branch_rename(cwd)
+  local old = safe_name(zap.opt('branch', ''), '分支名')
+  local new = safe_name(zap.opt('new_name', ''), '新分支名')
+  local out = git_or_fail({ 'branch', '-m', old, new }, cwd, '重命名分支')
+  zap.log(out ~= '' and out or ('已把 ' .. old .. ' 重命名为 ' .. new))
+end
+
+local function action_branch_delete_remote(cwd)
+  local remote = trim(zap.opt('remote', ''))
+  if remote == '' then remote = 'origin' end
+  remote = safe_name(remote, '远程名')
+  local branch = safe_name(zap.opt('branch', ''), '分支名')
+  local out = git_net_or_fail({ 'push', remote, '--delete', branch }, cwd, '删除远程分支')
+  zap.log(out ~= '' and out or ('已删除远程分支 ' .. remote .. '/' .. branch))
+end
+
+-- ── .gitignore / blame ──────────────────────────────────────
+
+--- 把勾中的路径追加进仓库根的 .gitignore（已有的不重复写）。
+local function action_ignore(cwd)
+  local files = opt_files()
+  if #files == 0 then zap.fail('请先勾选要忽略的文件') end
+  local root = repo_root(cwd)
+  if not root then zap.fail('当前目录不在 Git 仓库里') end
+  local gi = zap.path.join(root, '.gitignore')
+  local cur = ''
+  if zap.fs.is_file(gi) then
+    local ok, content = pcall(zap.read_file, gi)
+    if ok and type(content) == 'string' then cur = content end
+  end
+  local seen = {}
+  for _, line in ipairs(zap.str.lines(cur)) do seen[trim(line)] = true end
+  local added = {}
+  for _, f in ipairs(files) do
+    if not seen[f] then
+      seen[f] = true
+      added[#added + 1] = f
+    end
+  end
+  if #added == 0 then
+    zap.log('这些路径已在 .gitignore 里，无需重复添加')
+    return
+  end
+  local body = table.concat(added, '\n') .. '\n'
+  if cur ~= '' and not cur:find('\n$') then cur = cur .. '\n' end
+  zap.write_file(gi, cur .. body)
+  zap.log('已写入 .gitignore（' .. #added .. ' 条）：' .. table.concat(added, '、'))
+end
+
+--- 逐行作者：默认取勾选的第一个文件，也可用 file 指定。
+local function action_blame(cwd)
+  local files = opt_files()
+  local file = files[1] or safe_rel_path(zap.opt('file', ''))
+  if not file then zap.fail('请勾选一个文件，或填写 file 参数') end
+  local out = git_or_fail({ 'blame', '--date=short', '-w', '--', file }, cwd, '查看逐行作者')
+  zap.log(out ~= '' and out or '（无输出）')
 end
 
 -- ── SSH 密钥 ────────────────────────────────────────────────
@@ -736,6 +1141,52 @@ function on_run(ctx)
     return action_remote(cwd)
   elseif action == 'remote_remove' then
     return action_remote_remove(cwd)
+  elseif action == 'clone' then
+    return action_clone(cwd)
+  elseif action == 'stash_list' then
+    return action_stash_list(cwd)
+  elseif action == 'stash_save' then
+    return action_stash_save(cwd)
+  elseif action == 'stash_apply' then
+    return action_stash_apply(cwd)
+  elseif action == 'stash_pop' then
+    return action_stash_pop(cwd)
+  elseif action == 'stash_drop' then
+    return action_stash_drop(cwd)
+  elseif action == 'tag_list' then
+    return action_tag_list(cwd)
+  elseif action == 'tag_create' then
+    return action_tag_create(cwd)
+  elseif action == 'tag_push' then
+    return action_tag_push(cwd)
+  elseif action == 'tag_delete' then
+    return action_tag_delete(cwd)
+  elseif action == 'merge' then
+    return action_merge(cwd)
+  elseif action == 'merge_continue' then
+    return action_merge_continue(cwd)
+  elseif action == 'merge_abort' then
+    return action_merge_abort(cwd)
+  elseif action == 'rebase' then
+    return action_rebase(cwd)
+  elseif action == 'rebase_continue' then
+    return action_rebase_continue(cwd)
+  elseif action == 'rebase_abort' then
+    return action_rebase_abort(cwd)
+  elseif action == 'reset' then
+    return action_reset(cwd)
+  elseif action == 'revert' then
+    return action_revert(cwd)
+  elseif action == 'branch_delete' then
+    return action_branch_delete(cwd)
+  elseif action == 'branch_rename' then
+    return action_branch_rename(cwd)
+  elseif action == 'branch_delete_remote' then
+    return action_branch_delete_remote(cwd)
+  elseif action == 'ignore' then
+    return action_ignore(cwd)
+  elseif action == 'blame' then
+    return action_blame(cwd)
   elseif action == 'ssh_keys' then
     return action_ssh_keys(cwd)
   elseif action == 'ssh_use' then
@@ -744,15 +1195,6 @@ function on_run(ctx)
     return action_ssh_clear(cwd)
   elseif action == 'ssh_test' then
     return action_ssh_test(cwd)
-  elseif action == 'clone' then
-    local url = trim(zap.opt('url', ''))
-    if url == '' then zap.fail('clone 需要 url') end
-    if url:sub(1, 1) == '-' then zap.fail('仓库地址不能以 - 开头') end
-    local args = { 'clone', url }
-    local dest = trim(zap.opt('dest', ''))
-    if dest ~= '' then args[#args + 1] = dest end
-    zap.log(git_or_fail(args, cwd, 'clone'))
-    return
   end
 
   -- 兜底：只放行「无参数也只读」的子命令，其余一律拒绝 ——

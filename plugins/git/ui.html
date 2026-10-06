@@ -75,6 +75,22 @@
       table.remotes th, table.remotes td { padding: 5px 8px; text-align: left; border-bottom: 1px solid #f5f7fa; font-weight: normal; }
       table.remotes th { color: #909399; font-size: 12px; }
       table.remotes td.url { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
+
+      /* ── 进行中的操作横幅（合并 / 变基 / 拣选）───────────── */
+      .banner { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 10px;
+                background: #fdf6ec; border: 1px solid #faecd8; border-radius: 6px; color: #e6a23c; font-size: 12px; }
+      .banner .spacer { flex: 1; }
+
+      /* ── diff 着色 ─────────────────────────────────────── */
+      .diff-add { display: block; color: #67c23a; }
+      .diff-del { display: block; color: #f56c6c; }
+      .diff-hunk { display: block; color: #909399; }
+
+      /* ── 储藏 / 标签 列表 ──────────────────────────────── */
+      .entry { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid #f5f7fa; }
+      .entry:hover { background: #f5f7fa; }
+      .entry-ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: #909399; flex-shrink: 0; }
+      .entry-msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     </style>
   </head>
   <body>
@@ -89,6 +105,7 @@
     <div class="tabs">
       <button data-tab="status" class="is-active">状态</button>
       <button data-tab="commit">提交 / 推送</button>
+      <button data-tab="stash">储藏 / 标签</button>
       <button data-tab="settings">设置</button>
       <button data-tab="log">日志</button>
     </div>
@@ -106,10 +123,20 @@
       <div id="repoView" style="display: none;">
         <div class="summary" id="summary"></div>
 
+        <!-- 合并 / 变基 / 拣选中：给出「继续 / 中止」，不用跑去命令行收尾 -->
+        <div class="banner" id="opBanner" style="display:none;">
+          <strong id="opBannerText"></strong>
+          <span class="spacer"></span>
+          <button id="opContinue" class="ghost">继续</button>
+          <button id="opAbort" class="danger">中止</button>
+        </div>
+
         <hr class="hr" />
         <div class="row">
           <strong style="font-size:13px;">变更</strong>
           <span class="spacer"></span>
+          <button id="stashAll" class="ghost">储藏全部改动</button>
+          <button id="blameSel" class="ghost">逐行作者</button>
           <button id="stageAll" class="ghost">暂存全部</button>
           <button id="unstageAll" class="ghost">取消全部暂存</button>
         </div>
@@ -140,7 +167,10 @@
             <div class="file-list">
               <div class="file-group-title">
                 <span>未跟踪<span id="untrackedCount" class="badge">0</span></span>
-                <button class="link" id="stageTracked">暂存选中</button>
+                <span>
+                  <button class="link" id="stageTracked">暂存选中</button>
+                  <button class="link" id="ignoreSel" style="margin-left:10px;">加入 .gitignore</button>
+                </span>
               </div>
               <div id="untrackedList"></div>
             </div>
@@ -165,6 +195,9 @@
           <label style="display:flex;align-items:center;gap:4px;color:#606266;">
             <input type="checkbox" id="commitSelected" /> 只提交选中的文件
           </label>
+          <label style="display:flex;align-items:center;gap:4px;color:#606266;">
+            <input type="checkbox" id="commitAmend" /> 追加到上一次提交（--amend）
+          </label>
           <span class="hint" id="commitHint"></span>
         </div>
       </div>
@@ -183,6 +216,17 @@
           </label>
         </div>
         <div class="row">
+          <label style="display:flex;align-items:center;gap:4px;color:#606266;">
+            <input type="checkbox" id="pullRebase" /> 变基拉取（--rebase）
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;color:#606266;">
+            <input type="checkbox" id="pullAutostash" /> 自动储藏（--autostash）
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;color:#e6a23c;">
+            <input type="checkbox" id="pushForce" /> 强制推送（--force-with-lease）
+          </label>
+        </div>
+        <div class="row">
           <button id="doPull">拉取</button>
           <button id="doFetch" class="ghost">获取远端更新</button>
           <button id="doPush">推送</button>
@@ -191,9 +235,62 @@
       </div>
 
       <hr class="hr" />
+
+      <div class="section">
+        <div class="section-title">回退（改写历史，谨慎）</div>
+        <div class="row">
+          <label>模式</label>
+          <select id="resetMode">
+            <option value="mixed">mixed（保留改动在工作区）</option>
+            <option value="soft">soft（保留改动在暂存区）</option>
+            <option value="hard">hard（丢弃改动，不可恢复）</option>
+          </select>
+          <label>目标</label>
+          <input type="text" id="resetTarget" value="HEAD~1" style="width:140px;" />
+          <button id="doReset" class="danger">回退</button>
+        </div>
+      </div>
+
+      <hr class="hr" />
       <div class="section">
         <div class="section-title">输出</div>
         <pre class="output" id="out">（操作结果会显示在这里）</pre>
+      </div>
+    </div>
+
+    <!-- ── 储藏 / 标签 ──────────────────────────────────── -->
+    <div class="panel" data-panel="stash">
+      <div class="section">
+        <div class="section-title">储藏（临时收起工作区改动）</div>
+        <div class="row">
+          <input type="text" id="stashMsg" class="grow" placeholder="储藏说明（可留空）" />
+          <label style="display:flex;align-items:center;gap:4px;color:#606266;">
+            <input type="checkbox" id="stashUntracked" /> 含未跟踪文件
+          </label>
+          <button id="doStashSave">储藏</button>
+        </div>
+        <div class="panel-scroll" style="max-height:22vh;border:1px solid #ebeef5;border-radius:6px;">
+          <div id="stashList"></div>
+        </div>
+      </div>
+
+      <hr class="hr" />
+
+      <div class="section">
+        <div class="section-title">标签</div>
+        <div class="row">
+          <input type="text" id="tagName" placeholder="标签名，如 v1.0.0" style="width:160px;" />
+          <input type="text" id="tagCommit" placeholder="指向的提交（留空 = HEAD）" style="width:160px;" />
+          <input type="text" id="tagMsg" class="grow" placeholder="附注说明（留空 = 轻量标签）" />
+          <button id="doTagCreate">打标签</button>
+        </div>
+        <div class="row">
+          <button id="doTagPushAll" class="ghost">推送全部标签</button>
+          <button id="refreshStash" class="ghost">刷新</button>
+        </div>
+        <div class="panel-scroll" style="max-height:22vh;border:1px solid #ebeef5;border-radius:6px;">
+          <div id="tagList"></div>
+        </div>
       </div>
     </div>
 
@@ -268,6 +365,36 @@
           <input type="text" id="newBranch" placeholder="新分支名" />
           <button id="createBranch" class="ghost">新建并切换</button>
         </div>
+        <div class="row">
+          <input type="text" id="renameBranch" placeholder="重命名为" />
+          <button id="doBranchRename" class="ghost">重命名</button>
+          <label style="display:flex;align-items:center;gap:4px;color:#e6a23c;">
+            <input type="checkbox" id="branchForce" /> 强制删除（-D，丢弃未合并提交）
+          </label>
+          <button id="doBranchDelete" class="danger">删除分支</button>
+        </div>
+        <div class="row">
+          <label>远程</label>
+          <select id="branchRemoteSel"></select>
+          <button id="doBranchDeleteRemote" class="danger">删除远程分支</button>
+          <span class="hint">删除的是远程上的分支，本地分支不受影响</span>
+        </div>
+      </div>
+
+      <hr class="hr" />
+
+      <div class="section">
+        <div class="section-title">克隆仓库到当前目录</div>
+        <div class="row">
+          <input type="text" id="cloneUrl" class="grow" placeholder="仓库地址（https / git@… / 本地路径）" />
+          <input type="text" id="cloneDest" placeholder="目标目录（留空用仓库名）" style="width:180px;" />
+          <button id="doClone">克隆</button>
+        </div>
+        <div class="row">
+          <input type="text" id="cloneBranch" placeholder="指定分支（-b，可留空）" style="width:160px;" />
+          <input type="text" id="cloneDepth" placeholder="浅克隆深度（可留空）" style="width:150px;" />
+          <span class="hint" id="cloneHint">克隆到「目录」输入框指定位置的子目录</span>
+        </div>
       </div>
     </div>
 
@@ -275,10 +402,19 @@
     <div class="panel" data-panel="log">
       <div class="row">
         <button id="refreshLog" class="ghost">刷新日志</button>
+        <label style="display:flex;align-items:center;gap:4px;color:#606266;">
+          <input type="checkbox" id="logGraph" /> 分支图
+        </label>
+        <input type="text" id="logFile" placeholder="只看某个文件的历史（可留空）" style="width:220px;" />
         <span class="hint">点击某条提交可查看它的完整 diff</span>
       </div>
       <div class="panel-scroll" id="commitList" style="border:1px solid #ebeef5;border-radius:6px;"></div>
-      <pre class="output" id="diffOut" style="margin-top: 8px;">（选中提交后显示 diff）</pre>
+      <div class="row" style="margin-top:8px;">
+        <span class="hint" id="logPick">已选：—</span>
+        <span class="spacer"></span>
+        <button id="doRevert" class="danger">回滚此提交（revert）</button>
+      </div>
+      <pre class="output" id="diffOut">（选中提交后显示 diff）</pre>
     </div>
 
     <div class="statusbar" id="statusbar"><span id="statusText">就绪</span><span class="spacer"></span></div>
@@ -354,6 +490,21 @@
 
       function arr(v) { return Array.isArray(v) ? v : [] }
 
+      /** diff 着色：给 + / - / @@ 行加类名，其余原样（先转义再包 span）。 */
+      function diffHtml(text) {
+        var lines = String(text == null ? '' : text).split('\n')
+        var out = []
+        for (var i = 0; i < lines.length; i++) {
+          var l = lines[i]
+          var cls = ''
+          if (l.charAt(0) === '+' && l.indexOf('+++') !== 0) cls = 'diff-add'
+          else if (l.charAt(0) === '-' && l.indexOf('---') !== 0) cls = 'diff-del'
+          else if (l.indexOf('@@') === 0) cls = 'diff-hunk'
+          out.push('<span class="' + cls + '">' + escapeHtml(l) + '</span>')
+        }
+        return out.join('\n')
+      }
+
       // ── 页签 ────────────────────────────────────────────────────────────
       var tabs = document.querySelectorAll('.tabs button')
       for (var t = 0; t < tabs.length; t++) {
@@ -366,6 +517,7 @@
             panels[j].className = 'panel' + (panels[j].getAttribute('data-panel') === name ? ' is-active' : '')
           }
           if (name === 'log') loadLog()
+          if (name === 'stash') { loadStash(); loadTags() }
         }
       }
 
@@ -496,6 +648,41 @@
         el('commitHint').textContent = arr(r.staged).length ? '' : '暂存区为空，先在「状态」页暂存文件'
       }
 
+      var STATE_TEXT = {
+        merge: '合并进行中',
+        rebase: '变基进行中',
+        'cherry-pick': '拣选进行中'
+      }
+
+      /** 合并 / 变基 / 拣选中：给「继续 / 中止」入口，不用跑去命令行收尾。 */
+      function renderOpState(r) {
+        var st = r.state || 'normal'
+        var bar = el('opBanner')
+        bar.style.display = st === 'normal' ? 'none' : 'flex'
+        if (st === 'normal') return
+        var what = STATE_TEXT[st] || (st + ' 进行中')
+        el('opBannerText').textContent = what + '：解决冲突 → 在下面「变更」里暂存 → 点「继续」；想放弃就点「中止」。'
+        var can = st === 'merge' || st === 'rebase'
+        el('opContinue').style.display = can ? '' : 'none'
+        el('opAbort').style.display = can ? '' : 'none'
+        el('opContinue').textContent = '继续' + (st === 'rebase' ? '变基' : '合并')
+      }
+
+      /** 删除远程分支用的远程下拉（和推送区共用同一份 remotes）。 */
+      function renderBranchRemote(r) {
+        var sel = el('branchRemoteSel')
+        var keep = sel.value
+        var list = arr(r.remotes)
+        sel.innerHTML = ''
+        for (var i = 0; i < list.length; i++) {
+          var op = document.createElement('option')
+          op.value = list[i].name
+          op.textContent = list[i].name
+          sel.appendChild(op)
+        }
+        if (keep) sel.value = keep
+      }
+
       function applyRepo(r) {
         repo = r
         document.getElementById('notRepo').style.display = r.is_repo ? 'none' : 'block'
@@ -512,6 +699,8 @@
         el('conflictSection').style.display = arr(r.conflicted).length ? 'block' : 'none'
         renderRemotes(r)
         renderBranches(r)
+        renderBranchRemote(r)
+        renderOpState(r)
         renderIdentity(r)
         renderHints(r)
       }
@@ -584,10 +773,98 @@
           .catch(function () {})
       }
 
+      // ── 储藏 / 标签 ────────────────────────────────────────────────────
+      function loadStash() {
+        if (!repo || !repo.is_repo) return
+        return callJson('stash_list')
+          .then(function (r) {
+            var box = el('stashList')
+            var list = arr(r.entries)
+            if (!list.length) {
+              box.innerHTML = '<div class="empty">没有储藏</div>'
+              return
+            }
+            var html = ''
+            for (var i = 0; i < list.length; i++) {
+              html += '<div class="entry" data-idx="' + escapeHtml(list[i].index) + '">'
+                + '<span class="entry-ref">' + escapeHtml(list[i].ref) + '</span>'
+                + '<span class="entry-msg" title="' + escapeHtml(list[i].message) + '">'
+                + escapeHtml(list[i].message) + '</span>'
+                + '<button class="link" data-act="apply">应用</button>'
+                + '<button class="link" data-act="pop">弹出</button>'
+                + '<button class="link" data-act="drop" style="color:#f56c6c;">删除</button></div>'
+            }
+            box.innerHTML = html
+            var rows = box.querySelectorAll('.entry')
+            for (var k = 0; k < rows.length; k++) {
+              (function (row) {
+                var idx = row.getAttribute('data-idx')
+                var btns = row.querySelectorAll('button')
+                for (var b = 0; b < btns.length; b++) {
+                  btns[b].onclick = function () {
+                    var act = this.getAttribute('data-act')
+                    if (act === 'drop' && !confirm('删除该储藏？删除后无法恢复。')) return
+                    call('stash_' + act, { index: idx })
+                      .then(function () { return loadRepo() })
+                      .then(loadStash)
+                      .catch(function () {})
+                  }
+                }
+              })(rows[k])
+            }
+          })
+          .catch(function () {})
+      }
+
+      function loadTags() {
+        if (!repo || !repo.is_repo) return
+        return callJson('tag_list')
+          .then(function (r) {
+            var box = el('tagList')
+            var list = arr(r.tags)
+            if (!list.length) {
+              box.innerHTML = '<div class="empty">还没有标签</div>'
+              return
+            }
+            var html = ''
+            for (var i = 0; i < list.length; i++) {
+              html += '<div class="entry" data-name="' + escapeHtml(list[i].name) + '">'
+                + '<span class="entry-ref">' + escapeHtml(list[i].sha || '') + '</span>'
+                + '<span class="entry-msg">' + escapeHtml(list[i].name) + '</span>'
+                + '<button class="link" data-act="push">推送</button>'
+                + '<button class="link" data-act="delete" style="color:#f56c6c;">删除</button></div>'
+            }
+            box.innerHTML = html
+            var rows = box.querySelectorAll('.entry')
+            for (var k = 0; k < rows.length; k++) {
+              (function (row) {
+                var name = row.getAttribute('data-name')
+                var btns = row.querySelectorAll('button')
+                for (var b = 0; b < btns.length; b++) {
+                  btns[b].onclick = function () {
+                    var act = this.getAttribute('data-act')
+                    if (act === 'delete' && !confirm('删除标签「' + name + '」？（同时会尝试删除远程同名标签）')) return
+                    call('tag_' + act, { name: name })
+                      .then(loadTags)
+                      .catch(function () {})
+                  }
+                }
+              })(rows[k])
+            }
+          })
+          .catch(function () {})
+      }
+
       // ── 日志 ────────────────────────────────────────────────────────────
+      var pickedCommit = null
+
       function loadLog() {
         if (!repo || !repo.is_repo) return
-        return callJson('log', { n: '50' })
+        return callJson('log', {
+          n: '50',
+          graph: el('logGraph').checked ? '1' : '0',
+          file: el('logFile').value.trim()
+        })
           .then(function (r) {
             var list = arr(r.commits)
             var box = el('commitList')
@@ -609,8 +886,13 @@
             for (var k = 0; k < rows.length; k++) {
               rows[k].onclick = function () {
                 var sha = this.getAttribute('data-sha')
+                pickedCommit = sha
+                el('logPick').textContent = '已选：' + sha.slice(0, 8)
                 call('diff', { commit: sha })
-                  .then(function (text) { el('diffOut').className = 'output'; el('diffOut').textContent = text })
+                  .then(function (text) {
+                    el('diffOut').className = 'output'
+                    el('diffOut').innerHTML = diffHtml(text)
+                  })
                   .catch(function (e) {
                     el('diffOut').className = 'output err'
                     el('diffOut').textContent = String((e && e.message) || e)
@@ -667,10 +949,36 @@
       el('doInit').onclick = function () {
         reloadAfter('init', { branch: el('initBranch').value.trim() })
       }
+      el('stashAll').onclick = function () {
+        reloadAfter('stash_save', { message: '面板储藏 ' + new Date().toISOString().slice(0, 16).replace('T', ' ') })
+      }
+      el('blameSel').onclick = function () {
+        var files = selectedPaths()
+        if (!files.length) return setStatus('请先在变更列表里勾选一个文件', true)
+        call('blame', { file: files[0] }).catch(function () {})
+      }
+      el('ignoreSel').onclick = function () {
+        var files = selectedPaths()
+        if (!files.length) return setStatus('请先勾选要忽略的文件', true)
+        reloadAfter('ignore', { files: JSON.stringify(files) })
+      }
+      el('opContinue').onclick = function () {
+        var st = (repo && repo.state) || 'normal'
+        reloadAfter(st === 'rebase' ? 'rebase_continue' : 'merge_continue')
+      }
+      el('opAbort').onclick = function () {
+        var st = (repo && repo.state) || 'normal'
+        if (!confirm(st === 'rebase' ? '中止变基？会回到变基前的状态。' : '中止合并？会回到合并前的状态。')) return
+        reloadAfter(st === 'rebase' ? 'rebase_abort' : 'merge_abort')
+      }
       el('doCommit').onclick = function () {
         var msg = el('msg').value.trim()
         if (!msg) return setStatus('请填写提交信息', true)
         var extra = { message: msg }
+        if (el('commitAmend').checked) {
+          if (!confirm('追加到上一次提交（--amend）会改写最近一次提交，已推送过的分支慎用。确定？')) return
+          extra.amend = '1'
+        }
         if (el('commitSelected').checked) {
           var files = selectedPaths()
           if (!files.length) return setStatus('勾选了「只提交选中文件」但没有勾任何文件', true)
@@ -683,17 +991,35 @@
         })
       }
       el('doPush').onclick = function () {
+        if (el('pushForce').checked
+          && !confirm('强制推送（--force-with-lease）：若远端已被他人更新，推送会被拒绝。确定？')) return
         reloadAfter('push', {
           remote: el('pushRemote').value,
           branch: el('pushBranch').value.trim(),
-          set_upstream: el('setUpstream').checked ? '1' : '0'
+          set_upstream: el('setUpstream').checked ? '1' : '0',
+          force: el('pushForce').checked ? '1' : '0'
         })
       }
       el('doPull').onclick = function () {
         reloadAfter('pull', {
           remote: el('pushRemote').value,
-          branch: el('pushBranch').value.trim()
+          branch: el('pushBranch').value.trim(),
+          rebase: el('pullRebase').checked ? '1' : '0',
+          autostash: el('pullAutostash').checked ? '1' : '0'
         })
+      }
+      el('doReset').onclick = function () {
+        var mode = el('resetMode').value
+        var target = el('resetTarget').value.trim() || 'HEAD~1'
+        if (mode === 'hard'
+          && !confirm('hard 回退会丢弃 ' + target + ' 之后的提交与所有未提交改动，且不可恢复。确定？')) return
+        if (!confirm('把当前分支回退到 ' + target + '（--' + mode + '）？')) return
+        reloadAfter('reset', { mode: mode, commit: target })
+      }
+      el('doRevert').onclick = function () {
+        if (!pickedCommit) return setStatus('请先在上方点选一条提交', true)
+        if (!confirm('回滚提交 ' + pickedCommit.slice(0, 8) + '？会新增一个反向提交（不改写历史）。')) return
+        reloadAfter('revert', { commit: pickedCommit })
       }
       el('doFetch').onclick = function () { reloadAfter('fetch') }
 
@@ -720,7 +1046,70 @@
         if (!b) return setStatus('请填写新分支名', true)
         reloadAfter('branch_create', { branch: b })
       }
+      el('doBranchRename').onclick = function () {
+        var old = el('branchSelect').value
+        var fresh = el('renameBranch').value.trim()
+        if (!old) return setStatus('请先选择要重命名的分支', true)
+        if (!fresh) return setStatus('请填写新分支名', true)
+        reloadAfter('branch_rename', { branch: old, new_name: fresh }, function () {
+          el('renameBranch').value = ''
+        })
+      }
+      el('doBranchDelete').onclick = function () {
+        var b = el('branchSelect').value
+        if (!b) return setStatus('请先选择要删除的分支', true)
+        if (!confirm('删除分支「' + b + '」？' + (el('branchForce').checked ? '（强制，未合并的提交会丢失）' : ''))) return
+        reloadAfter('branch_delete', { branch: b, force: el('branchForce').checked ? '1' : '0' })
+      }
+      el('doBranchDeleteRemote').onclick = function () {
+        var b = el('branchSelect').value
+        var rm = el('branchRemoteSel').value
+        if (!b) return setStatus('请先选择分支', true)
+        if (!rm) return setStatus('该仓库还没有远程', true)
+        if (!confirm('删除远程分支 ' + rm + '/' + b + '？此操作会影响其他人。')) return
+        reloadAfter('branch_delete_remote', { remote: rm, branch: b })
+      }
+      el('doClone').onclick = function () {
+        var url = el('cloneUrl').value.trim()
+        if (!url) return setStatus('请填写仓库地址', true)
+        reloadAfter('clone', {
+          url: url,
+          dest: el('cloneDest').value.trim(),
+          branch: el('cloneBranch').value.trim(),
+          depth: el('cloneDepth').value.trim()
+        }, function () {
+          el('cloneUrl').value = ''
+          el('cloneDest').value = ''
+        })
+      }
+
+      // ── 储藏 / 标签 ────────────────────────────────────────────────────
+      el('doStashSave').onclick = function () {
+        reloadAfter('stash_save', {
+          message: el('stashMsg').value.trim(),
+          untracked: el('stashUntracked').checked ? '1' : '0'
+        }, function () { el('stashMsg').value = '' }).then(loadStash).catch(function () {})
+      }
+      el('doTagCreate').onclick = function () {
+        var name = el('tagName').value.trim()
+        if (!name) return setStatus('请填写标签名', true)
+        call('tag_create', {
+          name: name,
+          commit: el('tagCommit').value.trim(),
+          message: el('tagMsg').value.trim()
+        })
+          .then(loadTags)
+          .catch(function () {})
+      }
+      el('doTagPushAll').onclick = function () {
+        call('tag_push', { remote: (arr(repo && repo.remotes)[0] || {}).name || '' })
+          .then(loadTags)
+          .catch(function () {})
+      }
+      el('refreshStash').onclick = function () { loadStash(); loadTags() }
+
       el('refreshLog').onclick = function () { loadLog() }
+      el('logGraph').onchange = function () { loadLog() }
 
       // ── 启动：先取宿主传来的工作目录，再自动拉一次仓库状态 ─────────────
       zap.call('info', {})

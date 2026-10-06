@@ -1,7 +1,7 @@
 name: git
 title: Git 管理
-version: 1.2.0
-description: 在文件管理器当前目录里管理 Git 仓库（状态 / 暂存 / 提交 / 推送 / 身份、远程与 SSH 密钥设置）
+version: 1.3.0
+description: 在文件管理器当前目录里管理 Git 仓库（状态 / 暂存 / 提交 / 推送 / 储藏 / 标签 / 合并变基 / 回退 / 分支维护 / 身份、远程与 SSH 密钥设置）
 author: zap
 
 # user = 以「调用方面板用户」的 Linux 账号执行（不再是 root），避免 git 把仓库文件
@@ -36,6 +36,29 @@ actions:
   push: 推送
   fetch: 获取
   init: 初始化
+  clone: 克隆仓库
+  stash_list: 储藏列表
+  stash_save: 储藏改动
+  stash_apply: 应用储藏
+  stash_pop: 弹出储藏
+  stash_drop: 删除储藏
+  tag_list: 标签列表
+  tag_create: 打标签
+  tag_push: 推送标签
+  tag_delete: 删除标签
+  merge: 合并分支
+  merge_continue: 继续合并
+  merge_abort: 中止合并
+  rebase: 变基
+  rebase_continue: 继续变基
+  rebase_abort: 中止变基
+  reset: 回退到某次提交
+  revert: 回滚某次提交
+  branch_delete: 删除分支
+  branch_rename: 重命名分支
+  branch_delete_remote: 删除远程分支
+  ignore: 写入 .gitignore
+  blame: 逐行作者
   config: 保存身份
   config_get: 读取身份
   remote: 设置远程
