@@ -246,19 +246,24 @@ collation-server     = utf8mb4_0900_ai_ci
 log_timestamps       = SYSTEM
 
 
-# 默认 128M 太小，（建议设为总内存的 50% - 70%)
+# default 128M (total memory  50% - 70%)
 innodb_buffer_pool_size = 512M 
+innodb_log_file_size = 256M
+innodb_flush_log_at_trx_commit = 1
 
 max_connections         = 500
 max_connect_errors       = 1000
+thread_cache_size = 50
 
 log_bin         = mysql-bin
 binlog_format   = ROW
+binlog_row_image = FULL
+# 7 days (7*24*60*60=604800)
 binlog_expire_logs_seconds = 604800 
 
 EOF
 
-# ── 开机自启 ───────────────────────────────────────────────
+# ── system auto start ───────────────────────────────────────────────
 log_info "setup mysql service, enable auto start on boot"
 if [ ! -d /etc/init.d ]; then
     cp support-files/mysql.server /etc/init.d/mysql

@@ -1,6 +1,8 @@
 #!/bin/bash
-# MariaDB 安装脚本（zap appstore 调用）
-# 依赖环境变量（由 zapexec 注入）：ZAP_PATH APPS_DIR PKG_PATH APP_PATH APP_VERSION
+#
+# MariaDB Install Script
+# Version : 1.0.1
+# inject variables: ZAP_PATH APPS_DIR PKG_PATH APP_PATH APP_VERSION
 set -euo pipefail
 
 source "${ZAP_PATH}/scripts/zap/bash_utils.sh"
@@ -8,10 +10,7 @@ source "${ZAP_PATH}/scripts/zap/bash_utils.sh"
 
 MYSQL_SHORT_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}"
 INSTALL_DIR="${APPS_DIR}/mariadb-${MYSQL_SHORT_VERSION}"
-# 兼容早期按完整版本命名的安装目录
-if [ ! -d "${INSTALL_DIR}" ] && [ -d "${APPS_DIR}/mariadb-${APP_VERSION}" ]; then
-    INSTALL_DIR="${APPS_DIR}/mariadb-${APP_VERSION}"
-fi
+
 MYSQL_LINK="/usr/local/mysql"
 
 # ── 已安装 / 安装残局检查 ──────────────────────────────────
@@ -153,19 +152,25 @@ collation-server      = utf8mb4_general_ci
 
 max_connections         = 500
 connect_timeout         = 10
-wait_timeout            = 28800
-max_allowed_packet      = 16M
+wait_timeout            = 600
+max_allowed_packet      = 32M
+thread_cache_size = 50 
 
 
 default_storage_engine  = InnoDB
 
-# 建议设置为物理内存的 50% - 70%
-innodb_buffer_pool_size = 1G
+# total memory 50% - 70%
+innodb_buffer_pool_size = 512M
 innodb_log_file_size    = 256M
 innodb_flush_log_at_trx_commit = 1
 innodb_file_per_table   = 1
 
-# ---------- 日志配置 ----------
+log_bin                     = mysql-bin
+binlog_format               = ROW
+binlog_row_image            = FULL
+# 7 days (7*24*60*60=604800)
+binlog_expire_logs_seconds  = 604800
+
 log_error               = /var/log/mysql/error.log
 
 [client]

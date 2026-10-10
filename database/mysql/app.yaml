@@ -2,25 +2,22 @@ name: mysql
 title: MySQL / MariaDB
 version: [9.7.2,8.4.11,8.0.46,12.3.3,11.8.9,10.11.19]
 category: database
-description: MySQL(Oracle)与 MariaDB(社区维护的 MySQL 分支)。两者一次只能安装其一。
+description: MySQL and MariaDB are popular open-source relational database management systems. This app provides installation, upgrade, and uninstallation scripts for both MySQL and MariaDB families.
 icon: mysql.png
 tags: [mysql,mariadb,db]
 allow_multiple_instances: 'no'
 scripts:
   install: install.sh
-# 版本 → 家族元数据：合并入口的版本下拉据此分组展示；zapexec 在 install/uninstall/upgrade
-# 时按所选版本解析 family 下发 APP_FAMILY，install.sh/uninstall.sh 据此分流（不再按版本号猜测）
 version_meta:
-  # label：短名（选项内 / 卡片选中态标签）；group：下拉分组标题。展示名无前端内置映射，全由这里声明
-  "9.7.2":    { family: mysql,    label: MySQL,    group: MySQL Community Server }
-  "8.4.11":   { family: mysql,    label: MySQL,    group: MySQL Community Server }
-  "8.0.46":   { family: mysql,    label: MySQL,    group: MySQL Community Server }
-  "12.3.3":   { family: mariadb,  label: MariaDB,  group: MariaDB Server }
-  "11.8.9":   { family: mariadb,  label: MariaDB,  group: MariaDB Server }
-  "10.11.19": { family: mariadb,  label: MariaDB,  group: MariaDB Server }
+  "9.7.2":    { family: mysql,    label: MySQL (LTS 2034/04),    group: MySQL Community Server }
+  "8.4.11":   { family: mysql,    label: MySQL (LTS 2032/04),    group: MySQL Community Server }
+  "8.0.46":   { family: mysql,    label: MySQL (no LTS),    group: MySQL Community Server }
+  "12.3.3":   { family: mariadb,  label: MariaDB (LTS 2029/06),  group: MariaDB Server }
+  "11.8.9":   { family: mariadb,  label: MariaDB (LTS 2028/06),  group: MariaDB Server }
+  "10.11.19": { family: mariadb,  label: MariaDB (LTS 2028/02),  group: MariaDB Server }
 options:
   install:
-    # intro：整组介绍，Web 端展示在选项表单最下方（纯展示，不注入 env）
+    # intro
     intro: >-
       Install wizard applies to both MySQL and MariaDB families. Symbolic links
       are created only for the MySQL family; MariaDB keeps its own binaries in
@@ -31,8 +28,6 @@ options:
         type: bool
         default: false
         desc: If checked, symbolic links will be created in /usr/local/bin (mysql / mysqldump / myisamchk). Only applies to MySQL family.
-  # 升级：zap 缺省升级策略为「先执行 uninstall.sh（含数据备份）再执行 install.sh 重装」，
-  # 因此选项同时注入两个脚本的环境变量；intro 展示在升级选项表单最下方
   upgrade:
     intro: >-
       Upgrade preserves your data: zap runs the uninstall script (data and
@@ -44,7 +39,6 @@ options:
         type: bool
         default: false
         desc: If checked, symbolic links will be created in /usr/local/bin (mysql / mysqldump / myisamchk). Only applies to MySQL family.
-  # 卸载：同样支持选项与整组介绍；uninstall.sh 按 BACKUP_DATA 决定是否备份后删除
   uninstall:
     intro: >-
       Uninstall stops the mysql/mariadb service and removes the install
