@@ -69,10 +69,11 @@ case "${PKG_MGR}" in
         have_lib 'libncurses.so.*' \
             || pkg_install_any apt libncurses6 libncurses5 \
             || link_lib_compat libncurses.so.6 libncursesw.so.6 \
+            || link_lib_compat libncurses.so.6 libncurses.so.5 \
+            || link_lib_compat libtinfo.so.6 libtinfo.so.5 \
             || { log_error "missing libncurses (required by mysql client). Install libncurses6 (or libncurses5 on older systems) and retry"; exit 1; }
-
-        pkg_install_any apt numactl
-
+        have_lib 'libnuma.so.*' \
+            || pkg_install_any apt numactl
         ;;
     dnf | yum)
         have_lib libaio.so.1 \
@@ -370,14 +371,10 @@ if bin/mysql -u root -e "SELECT 1" </dev/null >/dev/null 2>&1; then
     exit 1
 fi
 
-# restart mysql
-log_info "restarting mysql"
-if command -v systemctl >/dev/null 2>&1; then
-    systemctl restart mysql.service
-elif command -v service >/dev/null 2>&1; then
-    service mysql restart
-fi
-log_info "mysql restart done"
+# No restart needed: my.cnf was already in place when the service started above,
+# and the hardening steps are SQL operations applied live. A `systemctl restart`
+# only re-reads the same config but blocks synchronously on mysqld's SIGTERM
+# shutdown (up to TimeoutStopSec), which can appear to hang — so we skip it.
 
 log_info "writing mysql info.yaml to ${APP_PATH}/info.yaml"
 ensure_dir "${APP_PATH}"
