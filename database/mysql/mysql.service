@@ -3,30 +3,24 @@ Description=MySQL Server
 Documentation=man:mysqld(8)
 Documentation=https://dev.mysql.com/doc/refman/en/using-systemd.html
 After=network.target
-After=syslog.target
 
 [Install]
 WantedBy=multi-user.target
 
 [Service]
-Type=forking
-
+# mysqld_safe 是前台守护进程（包着 mysqld 跑、永不退出），
+# Type=forking 会一直等它 fork 而直到 TimeoutStartSec 超时被 systemd 杀掉。
+# 这里直接前台运行 mysqld（Type=simple），systemctl start 立即返回，
+# 实际就绪由安装脚本的探活循环（mysqladmin status）确认。
+Type=simple
 User=mysql
 Group=mysql
-
-PIDFile=/usr/local/mysql/data/mysqld.pid
-
-ExecStart=/usr/local/mysql/bin/mysqld_safe --datadir=/usr/local/mysql/data --pid-file=/usr/local/mysql/data/mysqld.pid
-
-ExecStop=/bin/kill -TERM $MAINPID
-
+# pid-file 不在命令行覆盖，统一走 /etc/mysql/my.cnf 的 /var/run/mysqld/mysqld.pid
+ExecStart=/usr/local/mysql/bin/mysqld --basedir=/usr/local/mysql --datadir=/usr/local/mysql/data --plugin-dir=/usr/local/mysql/lib/plugin --log-error=/var/log/mysql/error.log
 ExecReload=/bin/kill -HUP $MAINPID
-
 TimeoutStartSec=900
 TimeoutStopSec=900
-
 Restart=on-failure
 RestartPreventExitStatus=1
 PrivateTmp=false
-
 LimitNOFILE=10000
