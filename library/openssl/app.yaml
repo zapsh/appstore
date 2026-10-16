@@ -7,4 +7,4 @@ tags: [openssl,ssl,tls,crypto,x509]
 allow_multiple_instances: 'yes'
 scripts:
   install: install.sh
-
+  uninstall: uninstall.sh

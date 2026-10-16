@@ -1,4 +1,4 @@
-# zap App Store Packages
+# ZAP App Store Packages
 
 This repository is the **package source** for the [zap](https://github.com/zapsh/zap) application
 store. Each subdirectory under a category folder is one installable package. The zap panel reads
@@ -10,7 +10,7 @@ Packages are grouped by category:
 | Category     | Purpose                                                        |
 | ------------ | -------------------------------------------------------------- |
 | `application`| Language tooling and CLIs (PHP, Composer, PIE, WP-CLI)         |
-| `database`   | Databases (MySQL / MariaDB)                                    |
+| `database`   | Databases (MySQL / MariaDB) , PostgreSQL                       |
 | `infra`      | System infrastructure services (Nginx, Docker)                 |
 | `library`    | Shared native libraries (OpenSSL, libpcre2)                    |
 | `plugins`    | Panel plugins distributed through the store                    |
@@ -37,6 +37,7 @@ Packages are grouped by category:
 | `tools/phpmyadmin`        | phpMyAdmin                     | Web DB admin tool                      |
 | `webapps/skeleton`        | Web 应用骨架                   | Blank site scaffold                    |
 | `webapps/wordpress`       | WordPress                      | Site app, panel-provisioned site + DB  |
+
 
 ## Package layout
 
