@@ -149,7 +149,8 @@ else
     exit 1
 fi
 if [ "${MAJOR_VERSION}" -eq 8 ] && [ "${MYSQL_MINOR}" -eq 0 ]; then
-    # 安装 8.0 系列时，强制使用 8.0.46（glibc2.17 构建）以兼容旧系统
+    # 8.0 系列强制用 glibc2.17 构建：一套二进制可通吃 old+new 主机；
+    # 因此上面 glibc>=2.28 时选 2.28 的分支对 8.0.x 不生效（只对 8.4/9.x 生效）
     GLIBC_PKG="2.17"
 fi
 
@@ -206,7 +207,10 @@ mkdir -p /etc/mysql
 cd "${INSTALL_DIR}"
 mkdir -p mysql-files
 chmod 750 mysql-files
-chown -R mysql:mysql "${INSTALL_DIR}"
+# 只把运行时需要写权限的目录交给 mysql 用户；bin/lib 保持 root 属主
+# （既是最小权限，也避免把整个解压树 chown 而拖慢安装）
+chown -R mysql:mysql "${INSTALL_DIR}/mysql-files"
+chown -R mysql:mysql /var/log/mysql /var/run/mysqld
 
 # 初始化数据目录（无密码模式，随后设置 root 密码）
 DATA_DIR="${INSTALL_DIR}/data"
@@ -218,6 +222,15 @@ else
     bin/mysqld --initialize-insecure --basedir=/usr/local/mysql --datadir=/usr/local/mysql/data --user=mysql
     DATA_REUSED=0
 fi
+# 数据目录归 mysql 所有（首次初始化或复用既有数据目录都确保权限正确）
+chown -R mysql:mysql "${DATA_DIR}"
+
+# 动态计算 innodb buffer pool：物理内存 50%，下限 128M，上限 8G
+MEM_MB="$(awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 2048)"
+BP_MB=$(( MEM_MB / 2 ))
+[ "${BP_MB}" -lt 128 ] && BP_MB=128
+[ "${BP_MB}" -gt 8192 ] && BP_MB=8192
+INNODB_BP="${BP_MB}M"
 
 cat > /etc/mysql/my.cnf <<EOF
 [client]
@@ -238,6 +251,10 @@ log-error       = /var/log/mysql/error.log
 pid-file        = /var/run/mysqld/mysqld.pid
 skip-external-locking
 skip-name-resolve
+# 仅监听本机：面板外的机器不可直连 3306（与 info.yaml 的 expose 声明一致）
+bind-address     = 127.0.0.1
+# 启用 binlog 必须显式 server-id（单实例用 1 即可），否则部分构建会拒绝启动
+server-id        = 1
 
 max_allowed_packet              = 32M
 
@@ -252,8 +269,8 @@ collation-server     = utf8mb4_0900_ai_ci
 log_timestamps       = SYSTEM
 
 
-# default 128M (total memory  50% - 70%)
-innodb_buffer_pool_size = 512M 
+# 按物理内存动态设置（计算见上方 INNODB_BP），避免小机 OOM / 大机浪费
+innodb_buffer_pool_size = ${INNODB_BP}
 innodb_log_file_size = 256M
 innodb_flush_log_at_trx_commit = 1
 
@@ -314,11 +331,12 @@ ROOT_CNF="$(mktemp /tmp/mysql-root.XXXXXX.cnf)"
 trap 'rm -f "${ROOT_CNF:-}"' EXIT
 printf '[client]\nuser = root\npassword = %s\n' "${MYSQL_ROOT_PASSWORD}" > "${ROOT_CNF}"
 
-# 等待 mysqld 就绪（最多 60s）
+# 等待 mysqld 就绪（最多 300s）
+# 首次 InnoDB 初始化在慢盘 / 低 IOPS 上常 >60s，给足时间避免误判失败；
 # 复用已初始化的数据目录时 root 已有密码（来自同一凭据库），探活必须带凭据
-log_info "wait for mysqld ready (max 60s)"
+log_info "wait for mysqld ready (max 300s)"
 MYSQLD_READY=0
-for _ in $(seq 1 60); do
+for _ in $(seq 1 300); do
     if [ "${DATA_REUSED}" = "1" ]; then
         if bin/mysqladmin --defaults-extra-file="${ROOT_CNF}" status >/dev/null 2>&1; then
             MYSQLD_READY=1
@@ -333,7 +351,7 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 if [ "${MYSQLD_READY}" -ne 1 ]; then
-    log_error "mysqld 60s 内未就绪，请查看 /var/log/mysql/error.log"
+    log_error "mysqld 300s 内未就绪，请查看 /var/log/mysql/error.log"
     exit 1
 fi
 
