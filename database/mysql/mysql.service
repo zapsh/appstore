@@ -8,15 +8,14 @@ After=network.target
 WantedBy=multi-user.target
 
 [Service]
-# mysqld_safe 是前台守护进程（包着 mysqld 跑、永不退出），
-# Type=forking 会一直等它 fork 而直到 TimeoutStartSec 超时被 systemd 杀掉。
-# 这里直接前台运行 mysqld（Type=simple），systemctl start 立即返回，
-# 实际就绪由安装脚本的探活循环（mysqladmin status）确认。
+# Run mysqld in the foreground (Type=simple); `systemctl start` returns at once and
+# readiness is confirmed by the install script's probe. All paths/options live in
+# /etc/mysql/my.cnf (pinned via --defaults-file, isolated from stray /etc/my.cnf);
+# no pid-file override is passed on the command line.
 Type=simple
 User=mysql
 Group=mysql
-# pid-file 不在命令行覆盖，统一走 /etc/mysql/my.cnf 的 /var/run/mysqld/mysqld.pid
-ExecStart=/usr/local/mysql/bin/mysqld --basedir=/usr/local/mysql --datadir=/usr/local/mysql/data --plugin-dir=/usr/local/mysql/lib/plugin --log-error=/var/log/mysql/error.log
+ExecStart=/usr/local/mysql/bin/mysqld --defaults-file=/etc/mysql/my.cnf
 ExecReload=/bin/kill -HUP $MAINPID
 TimeoutStartSec=900
 TimeoutStopSec=900
