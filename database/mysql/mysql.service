@@ -3,30 +3,23 @@ Description=MySQL Server
 Documentation=man:mysqld(8)
 Documentation=https://dev.mysql.com/doc/refman/en/using-systemd.html
 After=network.target
-After=syslog.target
 
 [Install]
 WantedBy=multi-user.target
 
 [Service]
-Type=forking
-
+# Run mysqld in the foreground (Type=simple); `systemctl start` returns at once and
+# readiness is confirmed by the install script's probe. All paths/options live in
+# /etc/mysql/my.cnf (pinned via --defaults-file, isolated from stray /etc/my.cnf);
+# no pid-file override is passed on the command line.
+Type=simple
 User=mysql
 Group=mysql
-
-PIDFile=/usr/local/mysql/data/mysqld.pid
-
-ExecStart=/usr/local/mysql/bin/mysqld_safe --datadir=/usr/local/mysql/data --pid-file=/usr/local/mysql/data/mysqld.pid
-
-ExecStop=/bin/kill -TERM $MAINPID
-
+ExecStart=/usr/local/mysql/bin/mysqld --defaults-file=/etc/mysql/my.cnf
 ExecReload=/bin/kill -HUP $MAINPID
-
 TimeoutStartSec=900
 TimeoutStopSec=900
-
 Restart=on-failure
 RestartPreventExitStatus=1
 PrivateTmp=false
-
 LimitNOFILE=10000
