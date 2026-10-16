@@ -1,6 +1,6 @@
 #!/bin/bash
-# MySQL 安装脚本（zap appstore 调用）
-# 依赖环境变量（由 zapexec 注入）：ZAP_PATH APPS_DIR PKG_PATH APP_PATH APP_VERSION
+# MySQL Install Script
+# ENV VARS：ZAP_PATH APPS_DIR PKG_PATH APP_PATH APP_VERSION
 set -euo pipefail
 
 source "${ZAP_PATH}/scripts/zap/bash_utils.sh"
@@ -55,12 +55,10 @@ elif [ -d "${INSTALL_DIR}" ]; then
     remove_path "${INSTALL_DIR}"
 fi
 
-# ── 运行时依赖库 ───────────────────────────────────────────
-# mysqld 需要 libaio.so.1、mysql 客户端需要 libncurses；包名随发行版 / 版本变化：
-# Ubuntu 24.04+、Debian 13+（is_os_ge ubuntu 24.04 / is_os_ge debian 13）里
-# libaio1 已改名 libaio1t64，且该包只提供 libaio.so.1t64 —— 官方二进制仍按
-# libaio.so.1 加载，所以装完还要补同名软链（link_lib_compat）；libncurses5 也已下线。
-# 因此：先按 soname 探测，缺失再按候选包名逐个尝试，最后按 soname 复核。
+# ── runtime depends ───────────────────────────────────────────
+# mysqld require libaio.so.1、mysql client : libncurses；
+# Ubuntu 24.04+、Debian 13+（is_os_ge ubuntu 24.04 / is_os_ge debian 13） only libaio.so.1t64 
+# libaio1 -> libaio1t64
 PKG_MGR="$(pkg_manager || true)"
 case "${PKG_MGR}" in
     apt)
@@ -78,7 +76,12 @@ case "${PKG_MGR}" in
             || pkg_install_any apt libncurses6 libncurses5 \
             || link_lib_compat libncurses.so.6 libncursesw.so.6 \
             || { log_error "缺少 libncurses：mysql 客户端必需。请手动安装 libncurses6(或旧系统的 libncurses5) 后重试"; exit 1; }
+
+
+        pkg_install_any apt numactl
+
         ;;
+        
     dnf | yum)
         have_lib libaio.so.1 \
             || pkg_install_any "${PKG_MGR}" libaio \
@@ -86,6 +89,9 @@ case "${PKG_MGR}" in
         have_lib 'libncurses.so.*' \
             || pkg_install_any "${PKG_MGR}" ncurses-libs ncurses-compat-libs \
             || { log_error "缺少 libncurses：mysql 客户端必需。请手动安装 ncurses-libs 后重试"; exit 1; }
+
+        have_lib 'libnuma.so.*' \
+            || pkg_install_any "${PKG_MGR}" numactl numactl-libs
         ;;
     *)
         log_warn "未识别的包管理器：请自行确认 libaio.so.1 与 libncurses 已安装"
