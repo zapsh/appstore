@@ -413,10 +413,7 @@ EOF
     fi
 fi
 
-# ── Install dir is ${APPS_DIR}/nginx (no version, fixed path) ───────────────────
-# No longer create a /usr/local/apps/nginx symlink: the old "versioned directory + symlink"
-# approach caused appstore to scan the symlink and the real directory as two nginx records.
-# This version installs to a fixed path, so there is exactly one.
+# ── Install dir is ${APPS_DIR}/nginx
 log_ok "nginx install dir: ${INSTALL_PATH}"
 
 # ── Service (fix the hardcoded path in the template, generate per actual install dir) ────────
@@ -437,8 +434,7 @@ nginx_diag() {   # nginx_diag <title> <command...>
 SVC_CMD=""
 if command -v systemctl >/dev/null 2>&1; then
     log_info "Generating systemd service nginx.service (path: ${INSTALL_PATH})"
-    sed "s|/usr/local/apps/nginx|${INSTALL_PATH}|g" \
-        "${ZAP_PATH}/scripts/systemd/nginx.service" > /etc/systemd/system/nginx.service
+    cp -f "${PKG_PATH}/nginx.service" /etc/systemd/system/nginx.service
     chmod 644 /etc/systemd/system/nginx.service
     systemctl daemon-reload
     systemctl enable nginx.service >/dev/null 2>&1 || true
@@ -463,28 +459,29 @@ sleep 1
 
 # ── Update zap app table (panel shows status / start-stop depends on info.yaml) ──────────────────
 # info.yaml is written to APP_PATH (apps/<category>/<name>/) for zapexec discovery and start-stop
-cat > "${APP_PATH}/info.yaml" <<'YAML'
+cat > "${APP_PATH}/info.yaml" <<YAML
 svc_name: nginx
 instance: nginx
-install_dir: __INSTALL_PATH__
+install_dir: ${INSTALL_PATH}
 version: ${APP_VERSION}
-config_file: __INSTALL_PATH__/conf/nginx.conf
+config_file: ${INSTALL_PATH}/conf/nginx.conf
 config_files:
-  - path: __INSTALL_PATH__/conf/nginx.conf
+  - path: ${INSTALL_PATH}/conf/nginx.conf
     label: nginx.conf
-  - path: __INSTALL_PATH__/conf/fastcgi.conf
+  - path: ${INSTALL_PATH}/conf/fastcgi.conf
     label: fastcgi.conf
-  - path: __INSTALL_PATH__/conf/mime.types
+  - path: ${INSTALL_PATH}/conf/mime.types
     label: mime.types
 pid_file: /var/run/nginx.pid
 log_files:
   - /var/log/nginx/error.log
   - /var/log/nginx/access.log
-expose: tcp:80
+expose: 
+    tcp:80
+    tcp:443
 tags:
   - webserver
 YAML
-sed -i "s|__INSTALL_PATH__|${INSTALL_PATH}|g" "${APP_PATH}/info.yaml"
 
 log_ok "nginx-${APP_VERSION} install complete (${INSTALL_PATH}); command: ${SVC_CMD:-none} start/stop/restart"
 if [ -n "${SVC_CMD}" ] && command -v systemctl >/dev/null 2>&1; then
