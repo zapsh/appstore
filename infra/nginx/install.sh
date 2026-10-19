@@ -122,10 +122,11 @@ install_modsec_deps() {
     esac
 
     log_info "${pm} Install ModSecurity build dependencies .."
+    # 不吞输出：装包要几分钟，静默会让面板日志看起来像卡死
     case "${pm}" in
-    apt) DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ${common} >/dev/null 2>&1 ;;
-    apk) apk add --no-cache ${common} >/dev/null 2>&1 ;;
-    *) "${pm}" install -y ${common} >/dev/null 2>&1 ;;
+    apt) DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ${common} 2>&1 ;;
+    apk) apk add --no-cache ${common} 2>&1 ;;
+    *) "${pm}" install -y ${common} 2>&1 ;;
     esac || {
         log_warn "Batch installation failed, please reinstall item by item .."
         for p in ${common}; do
