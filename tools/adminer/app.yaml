@@ -1,0 +1,15 @@
+name: adminer
+title: Adminer
+version: [6.1.2]
+category: tools
+description: MySQL / MariaDB database management tool
+tags: [adminer, mysql, mariadb, tool]
+# Panel-level tool: installed system-wide; not placed in a user site directory
+scope: panel
+allow_multiple_instances: 'no'
+dependencies:
+  php: '>=7.2'
+scripts:
+  install: install.sh
+  uninstall: uninstall.sh
+  upgrade: upgrade.sh
