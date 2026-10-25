@@ -126,8 +126,11 @@ end
 --- 取并校验工作目录：必须非空、且真实存在且为目录。
 local function safe_cwd()
   local cwd = zap.opt('cwd', '')
+  -- 宿主某些入口（如文件编辑器工具栏）可能没带 cwd：兜底到面板用户家目录，
+  -- 避免直接报错导致界面只显示笼统的「失败」。
+  if cwd == '' then cwd = zap.home_dir() end
   if cwd == '' then
-    zap.fail('未提供工作目录（cwd）。请通过文件管理器打开某目录后再用 Git 插件。')
+    zap.fail('未提供工作目录（cwd），且无法确定用户家目录。请通过文件管理器打开某目录后再用 Git 插件。')
   end
   local ok = zap.try_run('test', { '-d', cwd })
   if not ok then zap.fail('工作目录不存在或不是目录: ' .. cwd) end
@@ -1242,5 +1245,8 @@ end
 
 --- 回显当前工作目录，供 UI 初始填充。
 function on_info(ctx)
-  zap.log(zap.opt('cwd', ''))
+  -- 回显工作目录；宿主没带 cwd 时同样兜底到面板用户家目录
+  local cwd = zap.opt('cwd', '')
+  if cwd == '' then cwd = zap.home_dir() end
+  zap.log(cwd)
 end

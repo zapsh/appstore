@@ -511,8 +511,10 @@
             return s
           })
           .catch(function (e) {
-            showOutput(String((e && e.message) || e), true)
-            setBusy(false, T('失败'))
+            var msg = String((e && e.message) || e)
+            showOutput(msg, true)
+            setBusy(false)
+            setStatus(msg || T('失败'), true)
             throw e
           })
       }
@@ -531,8 +533,9 @@
             return obj
           })
           .catch(function (e) {
-            setStatus(String((e && e.message) || e), true)
-            setBusy(false, T('失败'))
+            var msg = String((e && e.message) || e)
+            setBusy(false)
+            setStatus(msg || T('失败'), true)
             throw e
           })
       }
@@ -1163,11 +1166,20 @@
       // ── 启动：先取宿主传来的工作目录，再自动拉一次仓库状态 ─────────────
       zap.call('info', {})
         .then(function (text) {
-          if (text) dirInput.value = String(text).trim()
+          var dir = String(text == null ? '' : text).trim()
+          if (!dir) {
+            // 宿主某些入口没带工作目录：先明确告知，避免后续 repo 调用只显示笼统的「失败」
+            setStatus(T('未获取到工作目录，请从文件管理器中进入某个目录后再打开 Git 插件'), true)
+            return
+          }
+          dirInput.value = dir
           return loadRepo()
         })
-        .catch(function () {
-          setStatus(T('未能读取初始状态，请手动填写目录后点「应用」'), true)
+        .catch(function (e) {
+          setStatus(
+            String((e && e.message) || e) || T('未能读取初始状态，请手动填写目录后点「应用」'),
+            true,
+          )
         })
     </script>
   </body>

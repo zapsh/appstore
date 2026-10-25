@@ -193,6 +193,7 @@ i18n:
       "回退（改写历史，谨慎）": "Reset (rewrites history - be careful)"
       "地址": "Address"
       "失败": "Failed"
+      "未获取到工作目录，请从文件管理器中进入某个目录后再打开 Git 插件": "No working directory received - open a folder in the file manager, then launch the Git plugin"
       "如 Your Name": "e.g. Your Name"
       "如 you@example.com": "e.g. you@example.com"
       "完成": "Done"
