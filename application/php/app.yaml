@@ -1,6 +1,6 @@
 name: php
 title: PHP
-version: [8.5.10,8.4.25,8.3.33,7.4.33]
+version: [8.5.12,8.4.27,8.3.36,8.2.35]
 category: application
 description: PHP is a server-side scripting language designed for web development.
 icon: php.png
@@ -12,7 +12,7 @@ scripts:
 options:
   install:
     intro: >-
-      Please select the PHP version to install.  php 7.4.33 has been deprecated and is no longer supported. 
+      Please select the PHP version to install.  PHP 7.4.33 has been removed. 
     items:
       - name: SET_DEFAULT
         label: Global Default
